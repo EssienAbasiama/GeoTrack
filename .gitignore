@@ -1,16 +1,37 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
+# ─── Mobile (React Native / Expo) ────────────────────────────────────────────
+
 # dependencies
-node_modules/
+mobile/node_modules/
 
 # Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/expo-env.d.ts
 
-# Native
-.kotlin/
+# Metro
+mobile/.metro-health-check*
+
+# Generated native folders
+mobile/ios/
+mobile/android/
+mobile/.kotlin/
+
+# TypeScript build info
+mobile/*.tsbuildinfo
+
+# ─── Backend (Laravel) ────────────────────────────────────────────────────────
+backend/vendor/
+backend/.env
+backend/storage/logs/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/bootstrap/cache/
+
+# ─── Native / Signing ─────────────────────────────────────────────────────────
 *.orig.*
 *.jks
 *.p8
@@ -18,24 +39,14 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
-# Metro
-.metro-health-check*
-
-# debug
+# ─── Debug ────────────────────────────────────────────────────────────────────
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# ─── macOS ────────────────────────────────────────────────────────────────────
 .DS_Store
 *.pem
 
-# local env files
+# ─── Local env files ──────────────────────────────────────────────────────────
 .env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
