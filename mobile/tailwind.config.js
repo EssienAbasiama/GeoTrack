@@ -12,6 +12,7 @@ module.exports = {
             fontFamily: {
                 sans: ["WorkSans_400Regular"],
                 medium: ["WorkSans_500Medium"],
+                heading: ["WorkSans_600SemiBold"],
                 bold: ["WorkSans_700Bold"],
                 light: ["WorkSans_300Light"],
             },
@@ -19,6 +20,7 @@ module.exports = {
                 light: "300",
                 normal: "400",
                 medium: "500",
+                semibold: "600",
                 bold: "700",
             },
         },
