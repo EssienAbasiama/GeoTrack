@@ -2,6 +2,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Image, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BottomNav } from "../components/BottomNav";
 
 const avatarSource = { uri: "https://randomuser.me/api/portraits/men/32.jpg" };
 
@@ -16,7 +17,13 @@ function useLiveClock() {
     return now;
 }
 
-export function HomeScreen() {
+
+interface HomeScreenProps {
+    onNavigate?: (screen: string) => void;
+    activeScreen?: string;
+}
+
+export function HomeScreen({ onNavigate, activeScreen = "home" }: HomeScreenProps) {
     const now = useLiveClock();
     const waveA = useRef(new Animated.Value(0)).current;
     const waveB = useRef(new Animated.Value(0)).current;
@@ -95,7 +102,7 @@ export function HomeScreen() {
                         <Image source={avatarSource} className="h-12 w-12 rounded-full" resizeMode="cover" />
                         <View className="ml-3">
                             <Text className="font-sans text-[14px] text-[#A4A7B3]">Welcome back,</Text>
-                            <Text className="font-heading text-[27px] leading-[31px] text-[#2D2F35]">Darrell Steward</Text>
+                            <Text className="font-heading text-[27px] leading-[31px] text-[#2D2F35]">Essien Abasiama</Text>
                         </View>
                     </View>
 
@@ -149,9 +156,7 @@ export function HomeScreen() {
 
                 <View className="mt-10 items-center">
                     <View className="relative h-[278px] w-[278px] items-center justify-center">
-                        <View className="absolute h-[278px] w-[278px] rounded-full bg-[#ECE9FA]" />
-                        <View className="absolute h-[198px] w-[198px] rounded-full bg-[#DAD2F5]" />
-
+                        {/* Animated ripples only, no static circles */}
                         <Animated.View
                             pointerEvents="none"
                             className="absolute h-[278px] w-[278px] rounded-full bg-[#ECE9FA]"
@@ -170,7 +175,6 @@ export function HomeScreen() {
                                 ],
                             }}
                         />
-
                         <Animated.View
                             pointerEvents="none"
                             className="absolute h-[198px] w-[198px] rounded-full bg-[#DAD2F5]"
@@ -189,7 +193,6 @@ export function HomeScreen() {
                                 ],
                             }}
                         />
-
                         <View className="h-[278px] w-[278px] items-center justify-center rounded-full">
                             <View className="h-[198px] w-[198px] items-center justify-center rounded-full">
                                 <Pressable className="h-[126px] w-[126px] items-center justify-center rounded-full bg-[#6343cc] shadow-lg shadow-[#4C34A1]/35 active:opacity-90">
@@ -201,29 +204,7 @@ export function HomeScreen() {
                 </View>
             </View>
 
-            <View className="absolute bottom-0 left-0 right-0">
-                <View className="min-h-[94px] flex-row items-center justify-around rounded-t-[24px] bg-white px-2 py-5 shadow-sm shadow-black/5">
-                    <Pressable className="flex-1 items-center justify-center">
-                        <Ionicons name="home" size={20} color="#6343cc" />
-                        <Text className="mt-1 font-medium text-[12px] text-[#6343cc]">Home</Text>
-                    </Pressable>
-
-                    <Pressable className="flex-1 items-center justify-center">
-                        <Ionicons name="calendar-outline" size={20} color="#B7BAC5" />
-                        <Text className="mt-1 font-medium text-[12px] text-[#B7BAC5]">Calendar</Text>
-                    </Pressable>
-
-                    <Pressable className="flex-1 items-center justify-center">
-                        <Ionicons name="document-text-outline" size={20} color="#B7BAC5" />
-                        <Text className="mt-1 font-medium text-[12px] text-[#B7BAC5]">Leave</Text>
-                    </Pressable>
-
-                    <Pressable className="flex-1 items-center justify-center">
-                        <Ionicons name="person-circle-outline" size={20} color="#B7BAC5" />
-                        <Text className="mt-1 font-medium text-[12px] text-[#B7BAC5]">Profile</Text>
-                    </Pressable>
-                </View>
-            </View>
+            <BottomNav active={activeScreen} onNavigate={onNavigate!} />
         </SafeAreaView>
     );
 }
