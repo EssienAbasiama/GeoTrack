@@ -1,13 +1,7 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BottomNav } from '../components/BottomNav';
-interface CalendarScreenProps {
-    onNavigate: (screen: string) => void;
-    activeScreen: string;
-}
-
-export function CalendarScreen({ onNavigate, activeScreen }: CalendarScreenProps) {
+export function CalendarScreen() {
     const attendance = [
         { day: 11, checkIn: "10:02 AM", checkOut: "-- : --", total: "07:20h", active: true },
         { day: 10, checkIn: "10:00 AM", checkOut: "07:00 PM", total: "09:00h" },
@@ -91,7 +85,6 @@ export function CalendarScreen({ onNavigate, activeScreen }: CalendarScreenProps
                     ))}
                 </ScrollView>
             </View>
-            <BottomNav active={activeScreen} onNavigate={onNavigate} />
         </SafeAreaView>
     );
 }

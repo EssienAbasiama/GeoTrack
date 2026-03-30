@@ -7,28 +7,76 @@ import {
     useFonts,
 } from '@expo-google-fonts/work-sans';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { View, Animated, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 
-import "./global.css";
+import './global.css';
 
-import { HomeScreen } from './src/screens/HomeScreen';
-import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { SplashScreen } from './src/screens/SplashScreen';
-
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
-import { LeaveScreen } from './src/screens/LeaveScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 
-type AppScreen = 'splash' | 'onboarding' | 'home' | 'calendar' | 'leave' | 'profile';
+const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+function HomeTabs() {
+    return (
+        <Tab.Navigator
+            screenOptions={({ route }) => ({
+                headerShown: false,
+                tabBarShowLabel: true,
+                tabBarActiveTintColor: '#6343cc',
+                tabBarInactiveTintColor: '#B7BAC5',
+                tabBarStyle: {
+                    position: 'absolute',
+                    height: 72,
+                    left: 16,
+                    right: 16,
+                    bottom: 16,
+                    borderRadius: 24,
+                    backgroundColor: 'rgba(255,255,255,0.19)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.45)',
+                    shadowColor: '#000',
+                    shadowOpacity: 0.12,
+                    shadowRadius: 20,
+                    shadowOffset: { width: 0, height: 8 },
+                    elevation: 15,
+                },
+                tabBarIcon: ({ focused, color, size }) => {
+                    let iconName = 'home';
+
+                    if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
+                    if (route.name === 'Calendar') iconName = focused ? 'calendar' : 'calendar-outline';
+                    if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
+
+                    return <Ionicons name={iconName} size={size} color={color} />;
+                },
+                tabBarLabelStyle: {
+                    fontSize: 11,
+                    fontWeight: '600',
+                    marginBottom: 4,
+                },
+            })}
+        >
+            <Tab.Screen name="Home" component={HomeScreen} />
+            <Tab.Screen name="Calendar" component={CalendarScreen} />
+            <Tab.Screen name="Profile" component={ProfileScreen} />
+        </Tab.Navigator>
+    );
+}
+
+function SplashWrapper({ navigation }: any) {
+    return <SplashScreen onFinish={() => navigation.replace('Onboarding')} />;
+}
 
 export default function App() {
-    const [screen, setScreen] = useState<AppScreen>('splash');
-    const [splashFinished, setSplashFinished] = useState(false);
-    const [transitionAnim] = useState(new Animated.Value(1));
-    const [nextScreen, setNextScreen] = useState<AppScreen | null>(null);
-
     const [fontsLoaded] = useFonts({
         WorkSans_300Light,
         WorkSans_400Regular,
@@ -37,96 +85,23 @@ export default function App() {
         WorkSans_700Bold,
     });
 
-    // ✅ Fix showSplash
-    const showSplash = screen === 'splash' && !splashFinished;
-
-    // Animation handler
-    const handleNavigate = (target: AppScreen) => {
-        if (target === screen) return;
-
-        setNextScreen(target);
-        Animated.timing(transitionAnim, {
-            toValue: 0,
-            duration: 180,
-            useNativeDriver: true,
-        }).start(() => {
-            setScreen(target);
-            transitionAnim.setValue(1);
-            setNextScreen(null);
-        });
-    };
-
-    // ✅ Prevent render before fonts load
     if (!fontsLoaded) return null;
 
-    let CurrentScreen = null;
-
-    if (showSplash) {
-        CurrentScreen = (
-            <SplashScreen
-                onFinish={() => {
-                    setSplashFinished(true);
-                    setScreen('onboarding');
-                }}
-            />
-        );
-    } else if (screen === 'onboarding') {
-        CurrentScreen = <OnboardingScreen onGetStarted={() => setScreen('home')} />;
-    } else if (screen === 'home') {
-        CurrentScreen = <HomeScreen onNavigate={handleNavigate} activeScreen="home" />;
-    } else if (screen === 'calendar') {
-        CurrentScreen = <CalendarScreen onNavigate={handleNavigate} activeScreen="calendar" />;
-    } else if (screen === 'leave') {
-        CurrentScreen = <LeaveScreen onNavigate={handleNavigate} activeScreen="leave" />;
-    } else if (screen === 'profile') {
-        CurrentScreen = <ProfileScreen onNavigate={handleNavigate} activeScreen="profile" />;
-    }
-
-    let NextScreenComponent = null;
-
-    if (nextScreen) {
-        if (nextScreen === 'home')
-            NextScreenComponent = <HomeScreen onNavigate={handleNavigate} activeScreen="home" />;
-        else if (nextScreen === 'calendar')
-            NextScreenComponent = <CalendarScreen onNavigate={handleNavigate} activeScreen="calendar" />;
-        else if (nextScreen === 'leave')
-            NextScreenComponent = <LeaveScreen onNavigate={handleNavigate} activeScreen="leave" />;
-        else if (nextScreen === 'profile')
-            NextScreenComponent = <ProfileScreen onNavigate={handleNavigate} activeScreen="profile" />;
-    }
-
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F4F8" }}>
-            <View className="flex-1 bg-[#F5F4F8]">
-                {nextScreen && (
-                    <Animated.View
-                        style={{
-                            ...StyleSheet.absoluteFillObject,
-                            opacity: transitionAnim,
-                            zIndex: 2,
-                        }}
-                    >
-                        {NextScreenComponent}
-                    </Animated.View>
-                )}
-
-                <Animated.View
-                    style={
-                        nextScreen
-                            ? {
-                                opacity: transitionAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [1, 0],
-                                }),
-                            }
-                            : { flex: 1 }
-                    }
-                >
-                    {CurrentScreen}
-                </Animated.View>
-
-                {!showSplash && <StatusBar style="dark" />}
-            </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
+            <NavigationContainer>
+                <Stack.Navigator screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="Splash" component={SplashWrapper} />
+                    <Stack.Screen
+                        name="Onboarding"
+                        children={({ navigation }) => (
+                            <OnboardingScreen onGetStarted={() => navigation.replace('MainTabs')} />
+                        )}
+                    />
+                    <Stack.Screen name="MainTabs" component={HomeTabs} />
+                </Stack.Navigator>
+            </NavigationContainer>
+            <StatusBar style="dark" />
         </SafeAreaView>
     );
 }

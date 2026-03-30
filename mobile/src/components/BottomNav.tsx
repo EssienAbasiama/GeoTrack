@@ -8,23 +8,36 @@ interface BottomNavProps {
 
 export function BottomNav({ active, onNavigate }: BottomNavProps) {
     return (
-        <View className="absolute bottom-0 left-0 right-0">
-            <View className="min-h-[94px] flex-row items-center justify-around rounded-t-[24px] bg-white px-2 py-5 shadow-sm shadow-black/5">
-                <Pressable className="flex-1 items-center justify-center" onPress={() => onNavigate("home")}>
-                    <Ionicons name="home" size={20} color={active === "home" ? "#6343cc" : "#B7BAC5"} />
-                    <Text className={`mt-1 font-medium text-[12px] ${active === "home" ? "text-[#6343cc]" : "text-[#B7BAC5]"}`}>Home</Text>
+        <View style={{
+            position: 'absolute',
+            bottom: 16,
+            left: 16,
+            right: 16,
+            borderRadius: 24,
+            backgroundColor: 'rgba(255, 255, 255, 0.16)',
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.5)',
+            shadowColor: '#000',
+            shadowOpacity: 0.12,
+            shadowOffset: { width: 0, height: 8 },
+            shadowRadius: 16,
+            elevation: 10,
+            paddingHorizontal: 12,
+            paddingTop: 10,
+            paddingBottom: 14,
+        }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' }}>
+                <Pressable onPress={() => onNavigate('home')} style={{ alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="home" size={22} color={active === 'home' ? '#6343cc' : '#BCC1CC'} />
+                    <Text style={{ marginTop: 2, fontSize: 11, color: active === 'home' ? '#6343cc' : '#BCC1CC' }}>Home</Text>
                 </Pressable>
-                <Pressable className="flex-1 items-center justify-center" onPress={() => onNavigate("calendar")}>
-                    <Ionicons name="calendar-outline" size={20} color={active === "calendar" ? "#6343cc" : "#B7BAC5"} />
-                    <Text className={`mt-1 font-medium text-[12px] ${active === "calendar" ? "text-[#6343cc]" : "text-[#B7BAC5]"}`}>Calendar</Text>
+                <Pressable onPress={() => onNavigate('calendar')} style={{ alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="calendar-outline" size={22} color={active === 'calendar' ? '#6343cc' : '#BCC1CC'} />
+                    <Text style={{ marginTop: 2, fontSize: 11, color: active === 'calendar' ? '#6343cc' : '#BCC1CC' }}>Calendar</Text>
                 </Pressable>
-                <Pressable className="flex-1 items-center justify-center" onPress={() => onNavigate("leave")}>
-                    <Ionicons name="document-text-outline" size={20} color={active === "leave" ? "#6343cc" : "#B7BAC5"} />
-                    <Text className={`mt-1 font-medium text-[12px] ${active === "leave" ? "text-[#6343cc]" : "text-[#B7BAC5]"}`}>Leave</Text>
-                </Pressable>
-                <Pressable className="flex-1 items-center justify-center" onPress={() => onNavigate("profile")}>
-                    <Ionicons name="person-circle-outline" size={20} color={active === "profile" ? "#6343cc" : "#B7BAC5"} />
-                    <Text className={`mt-1 font-medium text-[12px] ${active === "profile" ? "text-[#6343cc]" : "text-[#B7BAC5]"}`}>Profile</Text>
+                <Pressable onPress={() => onNavigate('profile')} style={{ alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="person-circle-outline" size={22} color={active === 'profile' ? '#6343cc' : '#BCC1CC'} />
+                    <Text style={{ marginTop: 2, fontSize: 11, color: active === 'profile' ? '#6343cc' : '#BCC1CC' }}>Profile</Text>
                 </Pressable>
             </View>
         </View>
