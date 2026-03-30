@@ -101,8 +101,8 @@ export function HomeScreen({ onNavigate, activeScreen = "home" }: HomeScreenProp
                     <View className="flex-row items-center">
                         <Image source={avatarSource} className="h-12 w-12 rounded-full" resizeMode="cover" />
                         <View className="ml-3">
-                            <Text className="font-sans text-[14px] text-[#A4A7B3]">Welcome back,</Text>
-                            <Text className="font-heading text-[27px] leading-[31px] text-[#2D2F35]">Essien Abasiama</Text>
+                            <Text className="font-sans text-[11px] text-[#A4A7B3]">Welcome back,</Text>
+                            <Text className="font-heading text-[18px] leading-[20px] text-[#2D2F35]">Essien Abasiama</Text>
                         </View>
                     </View>
 
@@ -117,25 +117,25 @@ export function HomeScreen({ onNavigate, activeScreen = "home" }: HomeScreenProp
                 </View>
 
                 <View className="mt-8 items-center">
-                    <Text className="font-medium text-[23px] text-[#4A4C55]">{formattedDate}</Text>
-                    <Text className="mt-2 font-bold text-[66px] leading-[74px] text-[#17181D]">{formattedTime}</Text>
+                    <Text className="font-medium text-[14px] text-[#4A4C55]">{formattedDate}</Text>
+                    <Text className="mt-2 font-bold text-[42px] leading-[48px] text-[#17181D]">{formattedTime}</Text>
                 </View>
 
                 <View className="mt-5 rounded-[20px] border border-[#ECECF2] bg-[#F9F9FB] px-4 py-6">
                     <View className="flex-row items-center justify-between">
                         <View className="flex-1 items-center">
-                            <Text className="font-sans text-[12px] text-[#C1C4CE]">Check in</Text>
-                            <Text className="mt-1 font-medium text-[20px] text-[#7E818D]">-- : --</Text>
+                            <Text className="font-sans text-[10px] text-[#C1C4CE]">Check in</Text>
+                            <Text className="mt-1 font-medium text-[14px] text-[#7E818D]">-- : --</Text>
                         </View>
                         <View className="h-9 w-[1px] bg-[#E7E8EE]" />
                         <View className="flex-1 items-center">
-                            <Text className="font-sans text-[12px] text-[#C1C4CE]">Check Out</Text>
-                            <Text className="mt-1 font-medium text-[20px] text-[#7E818D]">-- : --</Text>
+                            <Text className="font-sans text-[10px] text-[#C1C4CE]">Check Out</Text>
+                            <Text className="mt-1 font-medium text-[14px] text-[#7E818D]">-- : --</Text>
                         </View>
                         <View className="h-9 w-[1px] bg-[#E7E8EE]" />
                         <View className="flex-1 items-center">
-                            <Text className="font-sans text-[12px] text-[#C1C4CE]">Total hour</Text>
-                            <Text className="mt-1 font-heading text-[26px] text-[#2E3036]">00:00h</Text>
+                            <Text className="font-sans text-[10px] text-[#C1C4CE]">Total hour</Text>
+                            <Text className="mt-1 font-heading text-[18px] text-[#2E3036]">00:00h</Text>
                         </View>
                     </View>
                 </View>
@@ -146,12 +146,12 @@ export function HomeScreen({ onNavigate, activeScreen = "home" }: HomeScreenProp
                     </View>
 
                     <View className="ml-3 flex-1">
-                        <Text className="font-medium text-[13px] leading-[16px] text-[#7F8291]">Lunch</Text>
-                        <Text className="font-medium text-[13px] leading-[16px] text-[#7F8291]">Break</Text>
+                        <Text className="font-medium text-[11px] leading-[14px] text-[#7F8291]">Lunch</Text>
+                        <Text className="font-medium text-[11px] leading-[14px] text-[#7F8291]">Break</Text>
                     </View>
 
-                    <Text className="font-heading text-[20px] leading-[40px] text-[#31A74A]">Start</Text>
-                    <Text className="ml-6 font-heading text-[30px] leading-[34px] text-[#6A9E6F]">00:00m</Text>
+                    <Text className="font-heading text-[14px] leading-[30px] text-[#31A74A]">Start</Text>
+                    <Text className="ml-6 font-heading text-[20px] leading-[24px] text-[#6A9E6F]">00:00m</Text>
                 </View>
 
                 <View className="mt-10 items-center">
@@ -196,7 +196,7 @@ export function HomeScreen({ onNavigate, activeScreen = "home" }: HomeScreenProp
                         <View className="h-[278px] w-[278px] items-center justify-center rounded-full">
                             <View className="h-[198px] w-[198px] items-center justify-center rounded-full">
                                 <Pressable className="h-[126px] w-[126px] items-center justify-center rounded-full bg-[#6343cc] shadow-lg shadow-[#4C34A1]/35 active:opacity-90">
-                                    <Text className="font-heading text-[26px] text-white">Check In</Text>
+                                    <Text className="font-heading text-[18px] text-white">Check In</Text>
                                 </Pressable>
                             </View>
                         </View>

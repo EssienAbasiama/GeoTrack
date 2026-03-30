@@ -2,7 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Image, Text, View } from "react-native";
 
-const logoSource = require("../../assets/Images/Logo.png");
+const logoSource = require("../../assets/Images/White-without-bg.png");
 
 type SplashScreenProps = {
     onFinish: () => void;
@@ -92,7 +92,7 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
                 className="items-center"
             >
                 <Image source={logoSource} resizeMode="contain" className="h-28 w-28" />
-                <Text className="mt-5 font-medium text-[18px] tracking-[0.5px] text-white/90">GeoTrack</Text>
+                <Text className="mt-3 font-medium text-[18px] tracking-[0.5px] text-white/90">GeoTrack</Text>
             </Animated.View>
 
             <StatusBar style="light" />

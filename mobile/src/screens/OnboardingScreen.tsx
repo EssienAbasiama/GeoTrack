@@ -13,10 +13,10 @@ export function OnboardingScreen({ onGetStarted }: OnboardingScreenProps) {
             <OrbitHero />
 
             <View className="pb-7">
-                <Text className="mt-2 text-center font-bold text-[42px] leading-[46px] text-[#181A22]">
+                <Text className="mt-2 text-center font-bold text-[31px] leading-[46px] text-[#181A22]">
                     Smarter way to attend
                 </Text>
-                <Text className="mt-3 px-5 text-center font-sans text-[15px] leading-[22px] text-[#8C93A4]">
+                <Text className="mt-3 px-5 text-center font-sans text-[13px] leading-[22px] text-[#8C93A4]">
                     Mark attendance in just two steps. Scan your location, verify with your QR code, and move on.
                 </Text>
 
