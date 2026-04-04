@@ -189,9 +189,9 @@ function TabBarItem({
 
 function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     const insets = useSafeAreaInsets();
-    const [rowWidth, setRowWidth] = useState(0);
-    const indicatorX = useRef(new Animated.Value(0)).current;
-    const indicatorScale = useRef(new Animated.Value(1)).current;
+    const [tabLayouts, setTabLayouts] = useState<Record<string, { x: number; width: number }>>({});
+    const indicatorLeft = useRef(new Animated.Value(0)).current;
+    const indicatorWidth = useRef(new Animated.Value(EXPANDED_TAB_WIDTH)).current;
     const hasInitialized = useRef(false);
 
     const tabCount = state.routes.length;
@@ -200,47 +200,51 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
         EXPANDED_TAB_WIDTH +
         TAB_GAP * Math.max(tabCount - 1, 0);
     const barWidth = trackWidth + 16;
-    const leftOffset = rowWidth > 0 ? Math.max((rowWidth - trackWidth) / 2, 0) : 0;
+
+    const activeRouteKey = state.routes[state.index]?.key;
+    const activeLayout = activeRouteKey ? tabLayouts[activeRouteKey] : undefined;
 
     useEffect(() => {
-        if (!rowWidth) return;
+        if (!activeLayout) return;
 
-        const targetX = leftOffset + state.index * (COLLAPSED_TAB_WIDTH + TAB_GAP);
+        const targetLeft = activeLayout.x;
+        const targetWidth = activeLayout.width;
 
         if (!hasInitialized.current) {
-            indicatorX.setValue(targetX);
+            indicatorLeft.setValue(targetLeft);
+            indicatorWidth.setValue(targetWidth);
             hasInitialized.current = true;
             return;
         }
 
-        indicatorScale.setValue(1);
         Animated.parallel([
-            Animated.spring(indicatorX, {
-                toValue: targetX,
-                useNativeDriver: true,
-                speed: 14,
-                bounciness: 10,
+            Animated.spring(indicatorLeft, {
+                toValue: targetLeft,
+                useNativeDriver: false,
+                speed: 20,
+                bounciness: 9,
             }),
-            Animated.sequence([
-                Animated.timing(indicatorScale, {
-                    toValue: 1.12,
-                    duration: 110,
-                    easing: Easing.out(Easing.cubic),
-                    useNativeDriver: true,
-                }),
-                Animated.spring(indicatorScale, {
-                    toValue: 1,
-                    useNativeDriver: true,
-                    speed: 20,
-                    bounciness: 8,
-                }),
-            ]),
+            Animated.spring(indicatorWidth, {
+                toValue: targetWidth,
+                useNativeDriver: false,
+                speed: 20,
+                bounciness: 6,
+            }),
         ]).start();
-    }, [indicatorScale, indicatorX, leftOffset, rowWidth, state.index]);
+    }, [activeLayout, indicatorLeft, indicatorWidth]);
 
-    const onRowLayout = (event: LayoutChangeEvent) => {
-        const { width } = event.nativeEvent.layout;
-        setRowWidth(width);
+    const onSlotLayout = (routeKey: string) => (event: LayoutChangeEvent) => {
+        const { x, width } = event.nativeEvent.layout;
+        setTabLayouts((prev) => {
+            const existing = prev[routeKey];
+            if (existing && existing.x === x && existing.width === width) {
+                return prev;
+            }
+            return {
+                ...prev,
+                [routeKey]: { x, width },
+            };
+        });
     };
 
     return (
@@ -266,15 +270,15 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                     style={styles.glassOverlay}
                 />
                 <View style={styles.barInner}>
-                    <View style={styles.row} onLayout={onRowLayout}>
-                        {rowWidth > 0 ? (
+                    <View style={styles.row}>
+                        {activeLayout ? (
                             <Animated.View
                                 pointerEvents="none"
                                 style={[
                                     styles.activeSwitch,
                                     {
-                                        width: EXPANDED_TAB_WIDTH,
-                                        transform: [{ translateX: indicatorX }, { scaleX: indicatorScale }],
+                                        left: indicatorLeft,
+                                        width: indicatorWidth,
                                     },
                                 ]}
                             />
@@ -306,6 +310,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                                             marginHorizontal: TAB_GAP / 2,
                                         },
                                     ]}
+                                    onLayout={onSlotLayout(route.key)}
                                 >
                                     <TabBarItem
                                         routeKey={route.key}
