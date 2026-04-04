@@ -31,7 +31,8 @@ const styles = StyleSheet.create({
     barShell: {
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.5)',
+        borderColor: '#ddd8da',
+        backgroundColor: '#ebe8e9',
         overflow: 'hidden',
     },
     glassOverlay: {
@@ -41,10 +42,10 @@ const styles = StyleSheet.create({
     barInner: {
         position: 'relative',
         zIndex: 2,
-        padding: 6,
+        padding: 8,
     },
     row: {
-        height: 48,
+        height: 58,
         paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
@@ -59,17 +60,17 @@ const styles = StyleSheet.create({
     },
     tabButton: {
         width: '100%',
-        height: 44,
-        borderRadius: 22,
+        height: 52,
+        borderRadius: 26,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
     },
     activeSwitch: {
         position: 'absolute',
-        top: 2,
-        height: 44,
-        borderRadius: 22,
+        top: 3,
+        height: 52,
+        borderRadius: 26,
         zIndex: 0,
         elevation: 0,
         backgroundColor: PRIMARY_COLOR,
@@ -77,6 +78,14 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.35,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
+    },
+    iconCircle: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FFFFFF',
     },
     activeLabel: {
         marginLeft: 6,
@@ -173,11 +182,21 @@ function TabBarItem({
                 onPressOut={handlePressOut}
                 style={styles.tabButton}
             >
-                <Ionicons
-                    name={iconName}
-                    size={20}
-                    color={isFocused ? '#FFFFFF' : INACTIVE_COLOR}
-                />
+                {isFocused ? (
+                    <Ionicons
+                        name={iconName}
+                        size={20}
+                        color="#FFFFFF"
+                    />
+                ) : (
+                    <View style={styles.iconCircle}>
+                        <Ionicons
+                            name={iconName}
+                            size={18}
+                            color={INACTIVE_COLOR}
+                        />
+                    </View>
+                )}
                 {isFocused ? (
                     <Text style={styles.activeLabel}>{tabConfig.label}</Text>
                 ) : null}
@@ -250,7 +269,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
             style={[
                 styles.barFrame,
                 {
-                    bottom: 10,
+                    bottom: 25,
                     alignSelf: 'center',
                     width: barWidth,
                 },
