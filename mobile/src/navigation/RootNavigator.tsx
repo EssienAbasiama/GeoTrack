@@ -4,6 +4,7 @@ import { RootStackParamList } from '../types/navigation';
 import { SplashScreen } from '../screens/SplashScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { MainTabsNavigator } from './MainTabsNavigator';
+import { CheckInScreen } from '../screens/CheckInScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -73,6 +74,13 @@ export function RootNavigator() {
             <Stack.Screen
                 name="MainTabs"
                 component={MainTabsNavigator}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="CheckIn"
+                component={CheckInScreen}
                 options={{
                     animationEnabled: true,
                 }}

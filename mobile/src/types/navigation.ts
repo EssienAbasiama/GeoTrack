@@ -10,6 +10,7 @@ export type RootStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
   MainTabs: undefined;
+  CheckIn: undefined;
 };
 
 /**

@@ -24,6 +24,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-font"]
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GeoTrack uses your location to generate a check-in route to your class."
+        }
+      ]
+    ]
   }
 }

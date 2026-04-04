@@ -2,6 +2,9 @@ import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/v
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, Text, View, Easing } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../types/navigation";
 
 const avatarSource = { uri: "https://randomuser.me/api/portraits/men/32.jpg" };
 
@@ -16,6 +19,7 @@ function useLiveClock() {
 
 export function HomeScreen() {
     const now = useLiveClock();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
     // --- Screen fade animation ---
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -77,13 +81,12 @@ export function HomeScreen() {
     });
 
     const buttonScale = useRef(new Animated.Value(1)).current;
-    const [checkedIn, setCheckedIn] = useState(false);
 
     const handlePress = () => {
         Animated.sequence([
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
-        ]).start(() => setCheckedIn(prev => !prev));
+        ]).start(() => navigation.navigate("CheckIn"));
     };
 
     const formattedDate = useMemo(
@@ -203,9 +206,9 @@ export function HomeScreen() {
                                         transform: [{ scale: buttonScale }],
                                     }}
                                 >
-                                    <FontAwesome5 name={checkedIn ? 'hand-paper' : 'hand-pointer'} size={28} color="#fff" />
+                                    <FontAwesome5 name="hand-pointer" size={28} color="#fff" />
                                     <Text className="mt-2 font-heading text-[16px] text-white">
-                                        {checkedIn ? 'Checked In' : 'Check In'}
+                                        Check In
                                     </Text>
                                 </Animated.View>
                             </Pressable>
