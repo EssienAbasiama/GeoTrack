@@ -38,7 +38,7 @@ export function HomeScreen() {
         rippleAnims.forEach((anim, index) => {
             const animate = () => {
                 Animated.sequence([
-                    Animated.delay(index * 500), // stagger start for each ripple
+                    Animated.delay(index * 500),
                     Animated.timing(anim, {
                         toValue: 1,
                         duration: 2500,
@@ -50,7 +50,7 @@ export function HomeScreen() {
                         duration: 0,
                         useNativeDriver: true,
                     }),
-                ]).start(() => animate()); // repeat infinitely
+                ]).start(() => animate());
             };
             animate();
         });
@@ -107,7 +107,7 @@ export function HomeScreen() {
     );
 
     return (
-        <SafeAreaView className="flex-1 bg-[#F6F6F9] px-5 pt-3">
+        <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#F6F6F9] px-5 pt-3">
             <Animated.View
                 style={{
                     flex: 1,

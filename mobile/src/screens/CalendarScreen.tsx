@@ -9,7 +9,7 @@ export function CalendarScreen() {
     ];
 
     return (
-        <SafeAreaView className="flex-1 bg-[#F6F6F9] px-5 pt-3">
+        <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#F6F6F9] px-5 pt-3">
             <View className="flex-1 pb-[110px]">
                 <Text className="font-heading text-[22px] text-[#181A20] text-center mt-2 mb-4">Attendance Calendar</Text>
                 {/* Calendar Month Selector */}

@@ -159,7 +159,7 @@ export function ProfileScreen() {
     const [emailEnabled, setEmailEnabled] = useState(true);
 
     return (
-        <SafeAreaView style={styles.screen}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
                 <View style={styles.header}>
                     <Pressable style={styles.headerSide}>

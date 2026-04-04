@@ -1,6 +1,5 @@
 import { Pressable, Text, View, Animated, Easing } from "react-native";
 import { useEffect, useRef } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { OrbitHero } from "../components/onboarding/OrbitHero";
 
@@ -21,7 +20,7 @@ export function OnboardingScreen({ onGetStarted }: OnboardingScreenProps) {
     }, [fadeAnim]);
 
     return (
-        <SafeAreaView className="flex-1 bg-[#F5F4F8] px-6">
+        <View className="flex-1 bg-[#F5F4F8] px-6">
             <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
                 <OrbitHero />
 
@@ -41,6 +40,6 @@ export function OnboardingScreen({ onGetStarted }: OnboardingScreenProps) {
                     </Pressable>
                 </View>
             </Animated.View>
-        </SafeAreaView>
+        </View>
     );
 }

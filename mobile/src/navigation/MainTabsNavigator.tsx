@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,12 +15,13 @@ const Tab = createBottomTabNavigator<MainTabsParamList>();
 
 const PRIMARY_COLOR = '#6343cc';
 const INACTIVE_COLOR = '#9CA3AF';
+const COLLAPSED_TAB_WIDTH = 52;
+const EXPANDED_TAB_WIDTH = 122;
+const TAB_GAP = 8;
 
 const styles = StyleSheet.create({
     barFrame: {
         position: 'absolute',
-        left: 14,
-        right: 14,
         bottom: 12,
         shadowColor: '#000',
         shadowOpacity: 0.12,
@@ -52,9 +53,10 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     slot: {
-        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        position: 'relative',
+        zIndex: 1,
     },
     tabButton: {
         width: '100%',
@@ -69,6 +71,8 @@ const styles = StyleSheet.create({
         top: 2,
         height: 44,
         borderRadius: 22,
+        zIndex: 0,
+        elevation: 0,
         backgroundColor: PRIMARY_COLOR,
         shadowColor: PRIMARY_COLOR,
         shadowOpacity: 0.35,
@@ -175,17 +179,9 @@ function TabBarItem({
                     size={20}
                     color={isFocused ? '#FFFFFF' : INACTIVE_COLOR}
                 />
-                <Text
-                    style={[
-                        styles.activeLabel,
-                        {
-                            transform: [{ scale: isFocused ? 1 : 0.8 }],
-                            opacity: isFocused ? 1 : 0,
-                        },
-                    ]}
-                >
-                    {tabConfig.label}
-                </Text>
+                {isFocused ? (
+                    <Text style={styles.activeLabel}>{tabConfig.label}</Text>
+                ) : null}
             </Pressable>
         </Animated.View>
     );
@@ -195,37 +191,67 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     const insets = useSafeAreaInsets();
     const [rowWidth, setRowWidth] = useState(0);
     const indicatorX = useRef(new Animated.Value(0)).current;
+    const indicatorScale = useRef(new Animated.Value(1)).current;
+    const hasInitialized = useRef(false);
 
-    const indicatorWidth = 90;
-    const tabWidth = rowWidth > 0 ? rowWidth / state.routes.length : 0;
+    const tabCount = state.routes.length;
+    const trackWidth =
+        COLLAPSED_TAB_WIDTH * Math.max(tabCount - 1, 0) +
+        EXPANDED_TAB_WIDTH +
+        TAB_GAP * Math.max(tabCount - 1, 0);
+    const barWidth = trackWidth + 16;
+    const leftOffset = rowWidth > 0 ? Math.max((rowWidth - trackWidth) / 2, 0) : 0;
 
     useEffect(() => {
-        if (!tabWidth) return;
+        if (!rowWidth) return;
 
-        const targetX =
-            tabWidth * state.index + (tabWidth - indicatorWidth) / 2;
+        const targetX = leftOffset + state.index * (COLLAPSED_TAB_WIDTH + TAB_GAP);
 
-        const timeout = setTimeout(() => {
+        if (!hasInitialized.current) {
+            indicatorX.setValue(targetX);
+            hasInitialized.current = true;
+            return;
+        }
+
+        indicatorScale.setValue(1);
+        Animated.parallel([
             Animated.spring(indicatorX, {
                 toValue: targetX,
                 useNativeDriver: true,
-                speed: 18,
-                bounciness: 7,
-            }).start();
-        }, 50);
-
-        return () => clearTimeout(timeout);
-    }, [state.index, tabWidth]);
+                speed: 14,
+                bounciness: 10,
+            }),
+            Animated.sequence([
+                Animated.timing(indicatorScale, {
+                    toValue: 1.12,
+                    duration: 110,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: true,
+                }),
+                Animated.spring(indicatorScale, {
+                    toValue: 1,
+                    useNativeDriver: true,
+                    speed: 20,
+                    bounciness: 8,
+                }),
+            ]),
+        ]).start();
+    }, [indicatorScale, indicatorX, leftOffset, rowWidth, state.index]);
 
     const onRowLayout = (event: LayoutChangeEvent) => {
-        setRowWidth(event.nativeEvent.layout.width);
+        const { width } = event.nativeEvent.layout;
+        setRowWidth(width);
     };
 
     return (
         <View
             style={[
                 styles.barFrame,
-                { bottom: Math.max(insets.bottom, 10) },
+                {
+                    bottom: Math.max(insets.bottom, 10),
+                    alignSelf: 'center',
+                    width: barWidth,
+                },
             ]}
         >
             <BlurView intensity={58} tint="light" style={styles.barShell}>
@@ -241,14 +267,14 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                 />
                 <View style={styles.barInner}>
                     <View style={styles.row} onLayout={onRowLayout}>
-                        {indicatorWidth > 0 ? (
+                        {rowWidth > 0 ? (
                             <Animated.View
                                 pointerEvents="none"
                                 style={[
                                     styles.activeSwitch,
                                     {
-                                        width: indicatorWidth,
-                                        transform: [{ translateX: indicatorX }],
+                                        width: EXPANDED_TAB_WIDTH,
+                                        transform: [{ translateX: indicatorX }, { scaleX: indicatorScale }],
                                     },
                                 ]}
                             />
@@ -273,7 +299,13 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                             return (
                                 <View
                                     key={route.key}
-                                    style={styles.slot}
+                                    style={[
+                                        styles.slot,
+                                        {
+                                            width: isFocused ? EXPANDED_TAB_WIDTH : COLLAPSED_TAB_WIDTH,
+                                            marginHorizontal: TAB_GAP / 2,
+                                        },
+                                    ]}
                                 >
                                     <TabBarItem
                                         routeKey={route.key}
