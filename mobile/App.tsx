@@ -47,7 +47,7 @@ export default function App() {
     if (!fontsLoaded) return null;
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
             <NavigationContainer>
                 <RootNavigator />
             </NavigationContainer>

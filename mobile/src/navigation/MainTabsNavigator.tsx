@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MainTabsParamList } from '../types/navigation';
 import { HomeScreen } from '../screens/HomeScreen';
 import { CalendarScreen } from '../screens/CalendarScreen';
@@ -188,7 +187,6 @@ function TabBarItem({
 }
 
 function CustomTabBar({ state, navigation }: BottomTabBarProps) {
-    const insets = useSafeAreaInsets();
     const [tabLayouts, setTabLayouts] = useState<Record<string, { x: number; width: number }>>({});
     const indicatorLeft = useRef(new Animated.Value(0)).current;
     const indicatorWidth = useRef(new Animated.Value(EXPANDED_TAB_WIDTH)).current;
@@ -252,7 +250,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
             style={[
                 styles.barFrame,
                 {
-                    bottom: Math.max(insets.bottom, 10),
+                    bottom: 10,
                     alignSelf: 'center',
                     width: barWidth,
                 },

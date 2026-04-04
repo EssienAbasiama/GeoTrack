@@ -4,7 +4,7 @@ import { BottomNav } from '../components/BottomNav';
 
 export function LeaveScreen({ onNavigate, activeScreen }) {
     return (
-        <SafeAreaView className="flex-1 bg-[#F6F6F9]">
+        <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9]">
             <View className="flex-1 items-center justify-center">
                 <Text className="font-heading text-[32px] text-[#6343cc]">Leave</Text>
             </View>
