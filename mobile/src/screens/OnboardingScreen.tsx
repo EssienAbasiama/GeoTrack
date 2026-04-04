@@ -30,7 +30,7 @@ export function OnboardingScreen({ onGetStarted }: OnboardingScreenProps) {
                         Smarter way to attend
                     </Text>
                     <Text className="mt-3 px-5 text-center font-sans text-[13px] leading-[22px] text-[#8C93A4]">
-                        Mark attendance in just two steps. Scan your location, verify with your QR code, and move on.
+                        Mark attendance in just three steps. Verify your location, confirm your biometrics, and move on.
                     </Text>
 
                     <Pressable

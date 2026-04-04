@@ -174,10 +174,10 @@ export function HomeScreen() {
                             <MaterialCommunityIcons name="food-apple-outline" size={18} color="#FFFFFF" />
                         </View>
                         <View className="ml-3 flex-1">
-                            <Text className="font-medium text-[11px] leading-[14px] text-[#7F8291]">Lunch</Text>
-                            <Text className="font-medium text-[11px] leading-[14px] text-[#7F8291]">Break</Text>
+                            <Text className="font-bold text-[14px] leading-[14px] text-[#7F8291]">ELE 512</Text>
+
                         </View>
-                        <Text className="font-heading text-[14px] leading-[30px] text-[#31A74A]">Start</Text>
+                        <Text className="font-heading text-[20px] leading-[30px] text-[#31A74A]">Start</Text>
                         <Text className="ml-6 font-heading text-[20px] leading-[24px] text-[#6A9E6F]">00:00m</Text>
                     </View>
 
