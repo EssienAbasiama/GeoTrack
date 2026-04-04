@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { BlurView } from 'expo-blur';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CheckIn'>;
@@ -27,15 +28,20 @@ const DEFAULT_CENTER: LatLng = {
     longitude: 7.9289,
 };
 
-const DARK_MAP_STYLE = [
-    { elementType: 'geometry', stylers: [{ color: '#1f2230' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#8a92b2' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#1f2230' }] },
-    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#6c7391' }] },
-    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#34384a' }] },
-    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#2a2e3d' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#151927' }] },
-];
+function formatDistanceFromMeters(meters: number): string {
+    const miles = meters / 1609.344;
+    if (miles >= 0.1) return `${miles.toFixed(1)} mi`;
+    const feet = meters * 3.28084;
+    return `${Math.round(feet)} ft`;
+}
+
+function formatDurationFromSeconds(seconds: number): string {
+    const mins = Math.round(seconds / 60);
+    if (mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins / 60);
+    const rem = mins % 60;
+    return `${hours}h ${rem}m`;
+}
 
 function decodePolyline(encoded: string): LatLng[] {
     let index = 0;
@@ -111,22 +117,13 @@ export function CheckInScreen({ navigation }: Props) {
     };
 
     const fetchRoute = async (origin: LatLng, destination: LatLng) => {
-        const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-        if (!key) {
-            setRoutePoints([origin, destination]);
-            setDistanceText('~0.8 mi');
-            setDurationText('~9 min');
-            return;
-        }
-
         try {
-            const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=walking&key=${key}`;
+            const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=polyline`;
             const response = await fetch(url);
             const data = await response.json();
 
             const route = data?.routes?.[0];
-            const leg = route?.legs?.[0];
-            const points = route?.overview_polyline?.points as string | undefined;
+            const points = route?.geometry as string | undefined;
 
             if (points) {
                 setRoutePoints(decodePolyline(points));
@@ -134,8 +131,17 @@ export function CheckInScreen({ navigation }: Props) {
                 setRoutePoints([origin, destination]);
             }
 
-            setDistanceText(leg?.distance?.text ?? '~0.8 mi');
-            setDurationText(leg?.duration?.text ?? '~9 min');
+            if (typeof route?.distance === 'number') {
+                setDistanceText(formatDistanceFromMeters(route.distance));
+            } else {
+                setDistanceText('~0.8 mi');
+            }
+
+            if (typeof route?.duration === 'number') {
+                setDurationText(formatDurationFromSeconds(route.duration));
+            } else {
+                setDurationText('~9 min');
+            }
         } catch {
             setRoutePoints([origin, destination]);
             setDistanceText('~0.8 mi');
@@ -204,7 +210,6 @@ export function CheckInScreen({ navigation }: Props) {
                             latitudeDelta: 0.025,
                             longitudeDelta: 0.02,
                         }}
-                        customMapStyle={DARK_MAP_STYLE}
                         showsUserLocation={step === 'route'}
                         showsMyLocationButton={false}
                         showsCompass={false}
@@ -232,16 +237,22 @@ export function CheckInScreen({ navigation }: Props) {
                         ) : null}
                     </MapView>
 
+                    <View pointerEvents="none" className="absolute inset-0 bg-[#161B28]/32" />
+
                     <View className="absolute left-8 top-12 right-8 flex-row items-center justify-between">
-                        <Pressable
-                            onPress={() => navigation.goBack()}
-                            className="h-9 w-9 items-center justify-center rounded-full bg-white/18"
-                        >
-                            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
-                        </Pressable>
-                        <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-white/18">
-                            <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
-                        </Pressable>
+                        <BlurView intensity={45} tint="dark" className="h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-white/10">
+                            <Pressable
+                                onPress={() => navigation.goBack()}
+                                className="h-full w-full items-center justify-center"
+                            >
+                                <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+                            </Pressable>
+                        </BlurView>
+                        <BlurView intensity={45} tint="dark" className="h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-white/10">
+                            <Pressable className="h-full w-full items-center justify-center">
+                                <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
+                            </Pressable>
+                        </BlurView>
                     </View>
 
                     <Animated.View

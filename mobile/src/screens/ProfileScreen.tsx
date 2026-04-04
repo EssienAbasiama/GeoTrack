@@ -1,35 +1,48 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LogoutBottomSheet } from '../components/LogoutBottomSheet';
 
 const PRIMARY_COLOR = '#6343cc';
 
-function InfoRow({
+function MenuItem({
     icon,
     label,
-    value,
+    onPress,
 }: {
     icon: React.ComponentProps<typeof Ionicons>['name'];
     label: string;
-    value: string;
+    onPress?: () => void;
 }) {
     return (
-        <View className="mb-2 flex-row items-center rounded-[14px] bg-[#F5F6FA] px-3 py-3">
-            <Ionicons name={icon} size={17} color="#8F94A4" />
-            <View className="ml-3 flex-1">
-                <Text className="text-[12px] text-[#8F94A4]">{label}</Text>
-                <Text className="mt-1 font-medium text-[14px] text-[#232736]">{value}</Text>
+        <Pressable
+            onPress={onPress}
+            className="mb-2 flex-row items-center justify-between rounded-[14px] bg-[#F5F6FA] px-4 py-5"
+        >
+            <View className="flex-row items-center flex-1">
+                <Ionicons name={icon} size={18} color="#8F94A4" />
+                <Text className="ml-4 font-medium text-[15px] text-[#232736]">{label}</Text>
             </View>
-        </View>
+            <Ionicons name="chevron-forward" size={18} color="#8F94A4" />
+        </Pressable>
     );
 }
 
 export function ProfileScreen() {
     const [pushEnabled, setPushEnabled] = useState(true);
     const [emailEnabled, setEmailEnabled] = useState(true);
+    const [logoutVisible, setLogoutVisible] = useState(false);
+    const navigation = useNavigation();
     const pulseScale = useRef(new Animated.Value(1)).current;
+
+    const handleLogout = () => {
+        setLogoutVisible(false);
+        // Add your logout logic here
+        // e.g., clear auth tokens, reset navigation stack, etc.
+        console.log('User logged out');
+    };
 
     useEffect(() => {
         const pulseLoop = Animated.loop(
@@ -61,41 +74,45 @@ export function ProfileScreen() {
     }, [pulseScale]);
 
     return (
-        <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9]">
+        <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#FFFFFF]">
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 118 }}>
                 <View className="mb-4 flex-row items-center justify-between">
-                    <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-white">
+                    <Pressable onPress={() => navigation.goBack()} className="h-9 w-9 items-center justify-center rounded-full bg-white">
                         <Ionicons name="chevron-back" size={20} color="#232736" />
                     </Pressable>
                     <Text className="font-heading text-[22px] text-[#181A20]">Profile</Text>
-                    <View className="h-9 w-9" />
+                    <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-white">
+                        <Ionicons name="ellipsis-vertical" size={20} color="#232736" />
+                    </Pressable>
                 </View>
 
-                <LinearGradient
-                    colors={['#6E5AF7', PRIMARY_COLOR]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{ borderRadius: 20, paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center', marginBottom: 14 }}
-                >
+                <View className="mb-6 flex-row items-center rounded-[16px] p-4 bg-[#f7f7fa]">
                     <Image
                         source={{ uri: 'https://randomuser.me/api/portraits/women/8.jpg' }}
-                        style={{ width: 66, height: 66, borderRadius: 33, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)', marginBottom: 10 }}
+                        style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }}
                     />
-                    <Text className="font-heading text-[20px] text-[#F8F8FB]">Sarah Johnson</Text>
-                    <Text className="mt-1 text-[13px] text-[#D9D9F3]">Student</Text>
-                </LinearGradient>
-
-                <View className="mb-4 rounded-[20px] border border-[#E8EAF1] bg-white p-3">
-                    <Text className="mb-3 font-heading text-[19px] text-[#1F2230]">Account Information</Text>
-                    <InfoRow icon="mail-outline" label="Email" value="sarah@school.edu" />
-                    <InfoRow icon="call-outline" label="Phone" value="+1 (555) 987-6547" />
-                    <InfoRow icon="business-outline" label="Institution" value="University of Oxford" />
-                    <InfoRow icon="shield-checkmark-outline" label="Role" value="Admin" />
+                    <View className="flex-1">
+                        <Text className="font-heading text-[18px] text-[#181A20]">Jon Alshon</Text>
+                        <Text className="mt-1 text-[13px] text-[#8F94A4]">jon.alshon@gmail.com</Text>
+                    </View>
+                    <Pressable className="ml-2 h-8 px-3 items-center justify-center rounded-lg bg-[#6343cc]/10">
+                        <Ionicons name="pencil" size={16} color={PRIMARY_COLOR} />
+                    </Pressable>
                 </View>
 
-                <Text className="mb-3 font-heading text-[19px] text-[#1F2230]">Notifications</Text>
+                <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Account</Text>
 
-                <View className="mb-3 flex-row items-center justify-between rounded-[16px] border border-[#E8EAF1] bg-white px-3 py-3">
+                <View className="mb-6 rounded-[16px] overflow-hidden">
+                    <MenuItem icon="information-circle-outline" label="Account Information" />
+
+                    <MenuItem icon="location-outline" label="Address Management" />
+
+                    <MenuItem icon="lock-closed-outline" label="Password Manager" />
+                </View>
+
+                <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Notifications</Text>
+
+                <View className="mb-5 flex-row items-center justify-between rounded-[16px] border border-[#E8EAF1] px-3 py-3">
                     <View className="mr-2 flex-1 flex-row items-center">
                         <Ionicons name="notifications-outline" size={18} color="#A8ADBB" />
                         <View className="ml-3 flex-1">
@@ -111,7 +128,7 @@ export function ProfileScreen() {
                     />
                 </View>
 
-                <View className="mb-3 flex-row items-center justify-between rounded-[16px] border border-[#E8EAF1] bg-white px-3 py-3">
+                <View className="mb-5 flex-row items-center justify-between rounded-[16px] border border-[#E8EAF1] px-3 py-3">
                     <View className="mr-2 flex-1 flex-row items-center">
                         <MaterialCommunityIcons name="email-outline" size={18} color="#A8ADBB" />
                         <View className="ml-3 flex-1">
@@ -126,6 +143,29 @@ export function ProfileScreen() {
                         thumbColor="#FFFFFF"
                     />
                 </View>
+
+                <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Support</Text>
+
+                <View className="mb-3 rounded-[16px] overflow-hidden">
+                    <MenuItem icon="help-circle-outline" label="Help Center" />
+                    <View className="h-[1px] bg-[#E8EAF1]" />
+                    <Pressable
+                        onPress={() => setLogoutVisible(true)}
+                        className="mb-1 flex-row items-center justify-between rounded-[14px] bg-[#F5F6FA] px-4 py-4"
+                    >
+                        <View className="flex-row items-center flex-1">
+                            <Ionicons name="log-out-outline" size={18} color="#cc4361" />
+                            <Text className="ml-4 font-medium text-[15px] text-[#cc4361]">Logout</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#8F94A4" />
+                    </Pressable>
+                </View>
+
+                <LogoutBottomSheet
+                    isVisible={logoutVisible}
+                    onCancel={() => setLogoutVisible(false)}
+                    onConfirm={handleLogout}
+                />
             </ScrollView>
 
             <Animated.View style={{ position: 'absolute', right: 20, bottom: 100, transform: [{ scale: pulseScale }] }}>
