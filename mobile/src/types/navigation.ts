@@ -23,6 +23,17 @@ export type MainTabsParamList = {
 };
 
 /**
+ * Calendar Stack Navigator Params
+ * Nested stack inside the Calendar tab for class list and class attendance details
+ */
+export type CalendarStackParamList = {
+  CalendarClasses: undefined;
+  CalendarAttendance: {
+    classId: string;
+  };
+};
+
+/**
  * Composite navigation props for Root Stack
  * Use this type when a screen can be accessed from the Root Stack
  */

@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { MainTabsParamList } from '../types/navigation';
 import { HomeScreen } from '../screens/HomeScreen';
-import { CalendarScreen } from '../screens/CalendarScreen';
+import { CalendarStackNavigator } from './CalendarStackNavigator';
 import { ProfileScreen } from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
@@ -109,7 +109,7 @@ const TAB_SCREENS = [
     },
     {
         name: 'Calendar' as const,
-        component: CalendarScreen,
+        component: CalendarStackNavigator,
         label: 'Calendar',
         focusedIcon: 'stats-chart',
         unfocusedIcon: 'stats-chart-outline',
