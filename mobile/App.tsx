@@ -2,6 +2,8 @@ import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import {
     WorkSans_300Light,
     WorkSans_400Regular,
@@ -13,6 +15,7 @@ import {
 
 import './global.css';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { RoleProvider } from './src/store/RoleContext';
 
 /**
  * App Component
@@ -47,11 +50,17 @@ export default function App() {
     if (!fontsLoaded) return null;
 
     return (
-        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
-            <NavigationContainer>
-                <RootNavigator />
-            </NavigationContainer>
-            <StatusBar style="dark" />
-        </SafeAreaView>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <RoleProvider>
+                <BottomSheetModalProvider>
+                    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
+                        <NavigationContainer>
+                            <RootNavigator />
+                        </NavigationContainer>
+                        <StatusBar style="dark" />
+                    </SafeAreaView>
+                </BottomSheetModalProvider>
+            </RoleProvider>
+        </GestureHandlerRootView>
     );
 }

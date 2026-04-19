@@ -4,8 +4,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogoutBottomSheet } from '../components/LogoutBottomSheet';
+import { useRole, ROLE_LABELS, ROLE_DESCRIPTIONS, UserRole } from '../store/RoleContext';
 
 const PRIMARY_COLOR = '#6343cc';
+
+const ROLE_OPTIONS: { value: UserRole; icon: React.ComponentProps<typeof Ionicons>['name']; color: string; bg: string }[] = [
+    { value: 'student', icon: 'school', color: '#6343cc', bg: '#F0EDFC' },
+    { value: 'lecturer', icon: 'person', color: '#2196F3', bg: '#E3F2FD' },
+    { value: 'hoc', icon: 'people', color: '#FF9800', bg: '#FFF3E0' },
+    { value: 'superadmin', icon: 'shield-checkmark', color: '#4CAF50', bg: '#E8F5E9' },
+];
 
 function MenuItem({
     icon,
@@ -36,6 +44,7 @@ export function ProfileScreen() {
     const [logoutVisible, setLogoutVisible] = useState(false);
     const navigation = useNavigation();
     const pulseScale = useRef(new Animated.Value(1)).current;
+    const { role, setRole } = useRole();
 
     const handleLogout = () => {
         setLogoutVisible(false);
@@ -108,6 +117,60 @@ export function ProfileScreen() {
                     <MenuItem icon="location-outline" label="Address Management" />
 
                     <MenuItem icon="lock-closed-outline" label="Password Manager" />
+                </View>
+
+                {/* Role Selector (Testing) */}
+                <View className="mb-6 rounded-[20px] border-2 border-dashed border-[#FFB74D] bg-[#FFF8E1] p-4">
+                    <View className="flex-row items-center mb-3">
+                        <Ionicons name="flask" size={18} color="#FF9800" />
+                        <Text className="ml-2 font-heading text-[16px] text-[#E65100]">Test Mode: Role Selector</Text>
+                    </View>
+                    <Text className="text-[12px] text-[#FF9800] mb-4">
+                        Select a role to test different UI views. This will be removed in production.
+                    </Text>
+
+                    {ROLE_OPTIONS.map((option) => (
+                        <Pressable
+                            key={option.value}
+                            onPress={() => setRole(option.value)}
+                            className={`mb-2 flex-row items-center rounded-[14px] p-3 ${role === option.value ? 'border-2' : 'border border-[#E8EAF1] bg-white'
+                                }`}
+                            style={role === option.value ? { borderColor: option.color, backgroundColor: option.bg } : {}}
+                        >
+                            <View
+                                className="h-10 w-10 items-center justify-center rounded-xl"
+                                style={{ backgroundColor: role === option.value ? option.color + '20' : '#F5F6FA' }}
+                            >
+                                <Ionicons
+                                    name={option.icon}
+                                    size={20}
+                                    color={role === option.value ? option.color : '#8F94A4'}
+                                />
+                            </View>
+                            <View className="ml-3 flex-1">
+                                <Text
+                                    className="font-medium text-[15px]"
+                                    style={{ color: role === option.value ? option.color : '#232736' }}
+                                >
+                                    {ROLE_LABELS[option.value]}
+                                </Text>
+                                <Text className="text-[11px] text-[#8F94A4] mt-0.5">
+                                    {ROLE_DESCRIPTIONS[option.value]}
+                                </Text>
+                            </View>
+                            <View
+                                className="h-6 w-6 rounded-full border-2 items-center justify-center"
+                                style={{
+                                    borderColor: role === option.value ? option.color : '#D6D9E3',
+                                    backgroundColor: role === option.value ? option.color : 'transparent',
+                                }}
+                            >
+                                {role === option.value && (
+                                    <Ionicons name="checkmark" size={14} color="#fff" />
+                                )}
+                            </View>
+                        </Pressable>
+                    ))}
                 </View>
 
                 <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Notifications</Text>

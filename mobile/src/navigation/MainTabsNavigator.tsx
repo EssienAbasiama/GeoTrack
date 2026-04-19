@@ -9,6 +9,9 @@ import { MainTabsParamList } from '../types/navigation';
 import { HomeScreen } from '../screens/HomeScreen';
 import { CalendarStackNavigator } from './CalendarStackNavigator';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { ClassesScreen } from '../screens/ClassesScreen';
+import { LecturersScreen } from '../screens/LecturersScreen';
+import { useRole } from '../store/RoleContext';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
@@ -98,6 +101,7 @@ const styles = StyleSheet.create({
 /**
  * Tab screens configuration
  * Centralized definition of all tab screens with their icons and labels
+ * Each tab has a 'roles' array defining which user roles can see it
  */
 const TAB_SCREENS = [
     {
@@ -106,6 +110,23 @@ const TAB_SCREENS = [
         label: 'Home',
         focusedIcon: 'home',
         unfocusedIcon: 'home-outline',
+        roles: ['student', 'lecturer', 'hoc', 'superadmin'], // All roles
+    },
+    {
+        name: 'Classes' as const,
+        component: ClassesScreen,
+        label: 'Classes',
+        focusedIcon: 'book',
+        unfocusedIcon: 'book-outline',
+        roles: ['student', 'lecturer', 'superadmin', 'hoc'], // All roles can see classes
+    },
+    {
+        name: 'Lecturers' as const,
+        component: LecturersScreen,
+        label: 'Lecturers',
+        focusedIcon: 'people',
+        unfocusedIcon: 'people-outline',
+        roles: ['superadmin'], // Super Admin only
     },
     {
         name: 'Calendar' as const,
@@ -113,6 +134,7 @@ const TAB_SCREENS = [
         label: 'Calendar',
         focusedIcon: 'stats-chart',
         unfocusedIcon: 'stats-chart-outline',
+        roles: ['student', 'lecturer', 'hoc'], // Students, Lecturers, HOC (not super admin)
     },
     {
         name: 'Profile' as const,
@@ -120,10 +142,15 @@ const TAB_SCREENS = [
         label: 'Profile',
         focusedIcon: 'person',
         unfocusedIcon: 'person-outline',
+        roles: ['student', 'lecturer', 'hoc', 'superadmin'], // All roles
     },
 ];
 
 type TabConfig = (typeof TAB_SCREENS)[number];
+
+interface CustomTabBarProps extends BottomTabBarProps {
+    visibleTabs: TabConfig[];
+}
 
 function TabBarItem({
     routeKey,
@@ -205,7 +232,7 @@ function TabBarItem({
     );
 }
 
-function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+function CustomTabBar({ state, navigation, visibleTabs }: CustomTabBarProps) {
     const [tabLayouts, setTabLayouts] = useState<Record<string, { x: number; width: number }>>({});
     const indicatorLeft = useRef(new Animated.Value(0)).current;
     const indicatorWidth = useRef(new Animated.Value(EXPANDED_TAB_WIDTH)).current;
@@ -350,16 +377,22 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
  * 
  * Bottom tab navigation with pill-shaped active tab styling
  * Active tab has a colored background, inactive tabs are just icons
+ * Dynamically shows/hides tabs based on user role
  */
 export function MainTabsNavigator() {
+    const { role } = useRole();
+
+    // Filter tabs based on user role
+    const visibleTabs = TAB_SCREENS.filter(screen => screen.roles.includes(role));
+
     return (
         <Tab.Navigator
             screenOptions={{
                 headerShown: false,
             }}
-            tabBar={(props) => <CustomTabBar {...props} />}
+            tabBar={(props) => <CustomTabBar {...props} visibleTabs={visibleTabs} />}
         >
-            {TAB_SCREENS.map((screen) => (
+            {visibleTabs.map((screen) => (
                 <Tab.Screen
                     key={screen.name}
                     name={screen.name}

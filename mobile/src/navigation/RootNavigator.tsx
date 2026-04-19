@@ -5,6 +5,9 @@ import { SplashScreen } from '../screens/SplashScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { MainTabsNavigator } from './MainTabsNavigator';
 import { CheckInScreen } from '../screens/CheckInScreen';
+import { ClassDetailScreen } from '../screens/ClassDetailScreen';
+import { NavigationScreen } from '../screens/NavigationScreen';
+import { StudentDetailScreen } from '../screens/StudentDetailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -81,6 +84,28 @@ export function RootNavigator() {
             <Stack.Screen
                 name="CheckIn"
                 component={CheckInScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="ClassDetail"
+                component={ClassDetailScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="Navigation"
+                component={NavigationScreen}
+                options={{
+                    animationEnabled: true,
+                    presentation: 'fullScreenModal',
+                }}
+            />
+            <Stack.Screen
+                name="StudentDetail"
+                component={StudentDetailScreen}
                 options={{
                     animationEnabled: true,
                 }}

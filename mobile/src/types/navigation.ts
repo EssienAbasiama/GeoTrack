@@ -11,6 +11,37 @@ export type RootStackParamList = {
   Onboarding: undefined;
   MainTabs: undefined;
   CheckIn: undefined;
+  ClassDetail: {
+    classId: string;
+    classCode: string;
+    className: string;
+    venue: string;
+    day: string;
+    startTime: string;
+    endTime: string;
+  };
+  Navigation: {
+    destination: {
+      latitude: number;
+      longitude: number;
+    };
+    classCode: string;
+    className: string;
+    locationName?: string;
+    polygonCoords?: {
+      latitude: number;
+      longitude: number;
+    }[];
+  };
+  StudentDetail: {
+    studentId: string;
+    studentName: string;
+    matricNo: string;
+    email: string;
+    avatar: string;
+    classCode: string;
+    className: string;
+  };
 };
 
 /**
@@ -19,6 +50,8 @@ export type RootStackParamList = {
  */
 export type MainTabsParamList = {
   Home: undefined;
+  Classes: undefined;
+  Lecturers: undefined;
   Calendar: undefined;
   Profile: undefined;
 };
