@@ -283,10 +283,10 @@ export function NavigationScreen() {
                 destination.longitude
             );
             setDistance(dist);
-            
+
             // Check if we need to fetch a new route
             // Only fetch if: 1) No route yet, or 2) User moved > 30m from last route fetch point
-            const shouldFetchRoute = !lastRouteRef.current || 
+            const shouldFetchRoute = !lastRouteRef.current ||
                 getDistanceInMeters(
                     currentLocation.latitude,
                     currentLocation.longitude,
@@ -301,13 +301,13 @@ export function NavigationScreen() {
                 try {
                     // Fetch walking directions from OSRM
                     const url = `${OSRM_API}/${currentLocation.longitude},${currentLocation.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=polyline`;
-                    
+
                     const response = await fetch(url);
                     const data = await response.json();
 
                     if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
                         const route = data.routes[0];
-                        
+
                         // Decode the polyline geometry
                         const decodedRoute = decodePolyline(route.geometry);
                         setRouteCoordinates(decodedRoute);
@@ -356,10 +356,10 @@ export function NavigationScreen() {
         lightImpact();
         if (mapRef.current && userLocation) {
             // Use the actual route coordinates if available, otherwise just user and destination
-            const coordsToFit = routeCoordinates.length > 0 
-                ? routeCoordinates 
+            const coordsToFit = routeCoordinates.length > 0
+                ? routeCoordinates
                 : [userLocation, destination];
-            
+
             mapRef.current.fitToCoordinates(
                 coordsToFit,
                 {

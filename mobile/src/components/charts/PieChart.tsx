@@ -22,7 +22,7 @@ export function PieChart({
     centerLabelComponent,
 }: PieChartProps) {
     const total = data.reduce((sum, item) => sum + item.value, 0);
-    
+
     if (total === 0) {
         return (
             <View style={{ width: radius * 2, height: radius * 2, alignItems: 'center', justifyContent: 'center' }}>
@@ -33,7 +33,7 @@ export function PieChart({
 
     const size = radius * 2;
     const center = radius;
-    
+
     // Calculate paths for each segment
     let currentAngle = -90; // Start from top
     const segments = data.map((item, index) => {

@@ -26,13 +26,13 @@ import {
     BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { 
-    celebrationPattern, 
-    errorFeedback, 
-    lightImpact, 
-    mediumImpact, 
+import {
+    celebrationPattern,
+    errorFeedback,
+    lightImpact,
+    mediumImpact,
     successFeedback,
-    selectionFeedback 
+    selectionFeedback
 } from '../utils/haptics';
 
 const PRIMARY_COLOR = '#6343cc';
@@ -401,10 +401,10 @@ export const LivenessCheckBottomSheet = forwardRef<LivenessCheckBottomSheetRef, 
                                 <View
                                     key={index}
                                     className={`h-2 w-2 rounded-full mx-1 ${index < challengesPassed
-                                            ? 'bg-[#4CAF50]'
-                                            : index === challengesPassed
-                                                ? 'bg-[#6343cc]'
-                                                : 'bg-[#E8EAF1]'
+                                        ? 'bg-[#4CAF50]'
+                                        : index === challengesPassed
+                                            ? 'bg-[#6343cc]'
+                                            : 'bg-[#E8EAF1]'
                                         }`}
                                 />
                             ))}

@@ -45,16 +45,16 @@ export function HomeScreen() {
     const getCountdown = () => {
         const diff = upcomingClass.startTime.getTime() - now.getTime();
         const endDiff = upcomingClass.endTime.getTime() - now.getTime();
-        
+
         // Class is live if: started (diff <= 0) AND not ended (endDiff > 0)
         const isLive = diff <= 0 && endDiff > 0;
-        
+
         // Class is upcoming if: starts within 15 mins (can check in early)
         const isUpcoming = diff > 0 && diff <= 15 * 60 * 1000;
-        
+
         // Can check in if class is live OR upcoming (within 15 min grace period)
         const canCheckIn = isLive || isUpcoming;
-        
+
         if (diff <= 0) return { minutes: 0, seconds: 0, isLive, canCheckIn };
         const minutes = Math.floor(diff / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
@@ -106,10 +106,10 @@ export function HomeScreen() {
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: isSuperAdmin 
-            ? '#4CAF50' 
-            : countdown.canCheckIn 
-                ? '#4CAF50' 
+        backgroundColor: isSuperAdmin
+            ? '#4CAF50'
+            : countdown.canCheckIn
+                ? '#4CAF50'
                 : '#6755f2',
         opacity: animatedValue.interpolate({
             inputRange: [0, 1],
@@ -370,18 +370,18 @@ export function HomeScreen() {
                                         width: 130,
                                         height: 130,
                                         borderRadius: 65,
-                                        backgroundColor: isSuperAdmin 
-                                            ? '#4CAF50' 
-                                            : countdown.canCheckIn 
-                                                ? '#4CAF50' 
+                                        backgroundColor: isSuperAdmin
+                                            ? '#4CAF50'
+                                            : countdown.canCheckIn
+                                                ? '#4CAF50'
                                                 : '#6343cc',
                                         justifyContent: 'center',
                                         alignItems: 'center',
                                         transform: [{ scale: buttonScale }],
-                                        shadowColor: isSuperAdmin 
-                                            ? '#4CAF50' 
-                                            : countdown.canCheckIn 
-                                                ? '#4CAF50' 
+                                        shadowColor: isSuperAdmin
+                                            ? '#4CAF50'
+                                            : countdown.canCheckIn
+                                                ? '#4CAF50'
                                                 : '#6343cc',
                                         shadowOpacity: 0.4,
                                         shadowRadius: 20,

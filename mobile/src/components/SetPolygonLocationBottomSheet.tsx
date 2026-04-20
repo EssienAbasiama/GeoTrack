@@ -381,8 +381,8 @@ export const SetPolygonLocationBottomSheet = forwardRef<SetPolygonLocationBottom
                         onPress={handleSave}
                         disabled={isLoading || polygonCoords.length < 3 || !locationName.trim()}
                         className={`h-13 items-center justify-center rounded-[14px] ${polygonCoords.length >= 3 && locationName.trim()
-                                ? 'bg-[#6343cc]'
-                                : 'bg-[#E8EAF1]'
+                            ? 'bg-[#6343cc]'
+                            : 'bg-[#E8EAF1]'
                             }`}
                         style={{ height: 52 }}
                     >
@@ -391,8 +391,8 @@ export const SetPolygonLocationBottomSheet = forwardRef<SetPolygonLocationBottom
                         ) : (
                             <Text
                                 className={`font-medium text-[15px] ${polygonCoords.length >= 3 && locationName.trim()
-                                        ? 'text-white'
-                                        : 'text-[#B8BBC6]'
+                                    ? 'text-white'
+                                    : 'text-[#B8BBC6]'
                                     }`}
                             >
                                 Save Boundary

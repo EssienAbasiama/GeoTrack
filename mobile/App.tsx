@@ -16,8 +16,8 @@ import {
 import './global.css';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { RoleProvider } from './src/store/RoleContext';
-import { 
-    requestNotificationPermissions, 
+import {
+    requestNotificationPermissions,
     configureAndroidChannel,
     addNotificationResponseListener,
     addNotificationReceivedListener,
@@ -58,10 +58,10 @@ export default function App() {
         const initNotifications = async () => {
             // Configure Android notification channels
             await configureAndroidChannel();
-            
+
             // Request permissions
             await requestNotificationPermissions();
-            
+
             // Clear badge on app open
             await clearBadge();
         };

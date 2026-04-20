@@ -208,7 +208,7 @@ export function ClassDetailScreen() {
     const isClassActive = useMemo(() => {
         const now = new Date();
         const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
-        
+
         // Check if it's the right day
         if (currentDay !== day) return false;
 
@@ -256,13 +256,13 @@ export function ClassDetailScreen() {
 
     const handleCheckInSuccess = useCallback(() => {
         setHasCheckedIn(true);
-        
+
         // Celebration haptic feedback
         celebrationPattern();
-        
+
         // Send notification
         notifyCheckInSuccess(classCode, className);
-        
+
         Alert.alert(
             '🎉 Check-In Successful!',
             'Your attendance has been recorded for this class session.',
@@ -627,8 +627,8 @@ export function ClassDetailScreen() {
                     </Animated.View>
                     {/* Label under the FAB */}
                     <View style={{ position: 'absolute', bottom: -22, left: -10, right: -10, alignItems: 'center' }}>
-                        <Text style={{ 
-                            fontSize: 11, 
+                        <Text style={{
+                            fontSize: 11,
                             fontWeight: '600',
                             color: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
                         }}>
