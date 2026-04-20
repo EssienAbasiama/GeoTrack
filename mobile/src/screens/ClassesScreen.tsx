@@ -11,16 +11,30 @@ import type { RootStackParamList } from '../types/navigation';
 
 const PRIMARY_COLOR = '#6343cc';
 
+// Helper to get current day name
+const getCurrentDay = () => new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
+// Helper to get current time formatted for testing (class active now)
+const getActiveClassTime = () => {
+    const now = new Date();
+    const startHour = now.getHours();
+    const endHour = startHour + 2;
+    return {
+        startTime: `${String(startHour).padStart(2, '0')}:00`,
+        endTime: `${String(endHour).padStart(2, '0')}:00`,
+    };
+};
+
 // Mock data for classes
+// First class is set to be ACTIVE TODAY for testing
 const MOCK_CLASSES: ClassEntity[] = [
     {
         id: '1',
         code: 'ELE 512',
         name: 'Digital Signal Processing',
         venue: 'LT 201',
-        day: 'Monday',
-        startTime: '09:00',
-        endTime: '11:00',
+        day: getCurrentDay(), // Today - makes it active
+        ...getActiveClassTime(), // Current time - makes it active now
         lecturerName: 'Dr. Adewale Johnson',
         totalStudents: 45,
         attendanceRate: 87,

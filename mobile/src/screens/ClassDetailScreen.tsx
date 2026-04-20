@@ -1,6 +1,6 @@
-import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image } from 'react-native';
+import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -9,6 +9,8 @@ import { useRole } from '../store/RoleContext';
 import { AddStudentBottomSheet, type AddStudentBottomSheetRef } from '../components/AddStudentBottomSheet';
 import { SetLocationBottomSheet, type SetLocationBottomSheetRef } from '../components/SetLocationBottomSheet';
 import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../components/LocationCheckBottomSheet';
+import { celebrationPattern } from '../utils/haptics';
+import { notifyCheckInSuccess } from '../services/notifications';
 
 const PRIMARY_COLOR = '#6343cc';
 const PRIMARY_LIGHT = '#8B6FE8'; // Lighter shade for lecturer/HOC
@@ -183,7 +185,10 @@ export function ClassDetailScreen() {
     const [students, setStudents] = useState(MOCK_STUDENTS);
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [hasCheckedIn, setHasCheckedIn] = useState(false);
     const searchAnim = useRef(new Animated.Value(0)).current;
+    const checkInPulse = useRef(new Animated.Value(1)).current;
+    const fabRotate = useRef(new Animated.Value(0)).current;
 
     // Mock class location (in production, this would come from the backend)
     const [classLocation, setClassLocation] = useState<{
@@ -192,12 +197,92 @@ export function ClassDetailScreen() {
         radius: number;
         name: string;
     } | null>({
-        // Default mock location (can be null if not set)
-        latitude: 6.5244,
-        longitude: 3.3792,
+        // Default mock location - FUNAAB (Federal University of Agriculture, Abeokuta)
+        latitude: 7.2266,
+        longitude: 3.4400,
         radius: 50,
         name: venue,
     });
+
+    // Determine if class is currently active based on schedule
+    const isClassActive = useMemo(() => {
+        const now = new Date();
+        const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+        
+        // Check if it's the right day
+        if (currentDay !== day) return false;
+
+        // Parse start and end times
+        const parseTime = (timeStr: string) => {
+            const [time, period] = timeStr.split(' ');
+            const [hours, minutes] = time.split(':').map(Number);
+            let h = hours;
+            if (period === 'PM' && hours !== 12) h += 12;
+            if (period === 'AM' && hours === 12) h = 0;
+            return h * 60 + minutes; // Convert to minutes
+        };
+
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const startMinutes = parseTime(startTime);
+        const endMinutes = parseTime(endTime);
+
+        // Add 15 minutes grace period before class starts
+        return currentMinutes >= (startMinutes - 15) && currentMinutes <= endMinutes;
+    }, [day, startTime, endTime]);
+
+    // Check-in pulse animation for active class
+    useEffect(() => {
+        if (isStudent && isClassActive && classLocation && !hasCheckedIn) {
+            const pulse = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(checkInPulse, {
+                        toValue: 1.08,
+                        duration: 1000,
+                        easing: Easing.inOut(Easing.ease),
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(checkInPulse, {
+                        toValue: 1,
+                        duration: 1000,
+                        easing: Easing.inOut(Easing.ease),
+                        useNativeDriver: true,
+                    }),
+                ])
+            );
+            pulse.start();
+            return () => pulse.stop();
+        }
+    }, [isStudent, isClassActive, classLocation, hasCheckedIn]);
+
+    const handleCheckInSuccess = useCallback(() => {
+        setHasCheckedIn(true);
+        
+        // Celebration haptic feedback
+        celebrationPattern();
+        
+        // Send notification
+        notifyCheckInSuccess(classCode, className);
+        
+        Alert.alert(
+            '🎉 Check-In Successful!',
+            'Your attendance has been recorded for this class session.',
+            [{ text: 'OK' }]
+        );
+    }, [classCode, className]);
+
+    const handleOpenDirections = () => {
+        if (classLocation) {
+            navigation.navigate('Navigation', {
+                destination: {
+                    latitude: classLocation.latitude,
+                    longitude: classLocation.longitude,
+                },
+                classCode,
+                className,
+                locationName: classLocation.name,
+            });
+        }
+    };
 
     // Filter students based on search query
     const filteredStudents = useMemo(() => {
@@ -502,28 +587,53 @@ export function ClassDetailScreen() {
             </Animated.View>
 
             {/* Floating Action Buttons */}
-            {/* Location Direction Button for Students - Primary Color */}
+            {/* Smart Check-In/Directions Button for Students */}
             {isStudent && classLocation && (
                 <Pressable
-                    onPress={() => locationCheckRef.current?.open()}
+                    onPress={() => {
+                        if (isClassActive && !hasCheckedIn) {
+                            // Class is active - open location check for check-in flow
+                            locationCheckRef.current?.open();
+                        } else {
+                            // Class not active or already checked in - open directions
+                            handleOpenDirections();
+                        }
+                    }}
                     style={{ position: 'absolute', bottom: 100, right: 20 }}
                 >
-                    <View
+                    <Animated.View
                         style={{
-                            width: 60,
-                            height: 60,
-                            borderRadius: 30,
-                            backgroundColor: PRIMARY_COLOR,
+                            width: 64,
+                            height: 64,
+                            borderRadius: 32,
+                            backgroundColor: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
                             justifyContent: 'center',
                             alignItems: 'center',
-                            shadowColor: PRIMARY_COLOR,
-                            shadowOpacity: 0.4,
-                            shadowRadius: 12,
-                            shadowOffset: { width: 0, height: 6 },
-                            elevation: 8,
+                            shadowColor: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
+                            shadowOpacity: 0.5,
+                            shadowRadius: 16,
+                            shadowOffset: { width: 0, height: 8 },
+                            elevation: 10,
+                            transform: [{ scale: isClassActive && !hasCheckedIn ? checkInPulse : 1 }],
                         }}
                     >
-                        <MaterialIcons name="directions" size={28} color="#fff" />
+                        {hasCheckedIn ? (
+                            <Ionicons name="checkmark-circle" size={30} color="#fff" />
+                        ) : isClassActive ? (
+                            <MaterialCommunityIcons name="account-check" size={30} color="#fff" />
+                        ) : (
+                            <MaterialIcons name="directions" size={28} color="#fff" />
+                        )}
+                    </Animated.View>
+                    {/* Label under the FAB */}
+                    <View style={{ position: 'absolute', bottom: -22, left: -10, right: -10, alignItems: 'center' }}>
+                        <Text style={{ 
+                            fontSize: 11, 
+                            fontWeight: '600',
+                            color: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
+                        }}>
+                            {hasCheckedIn ? 'Checked In' : isClassActive ? 'Clock In' : 'Directions'}
+                        </Text>
                     </View>
                 </Pressable>
             )}
@@ -683,6 +793,9 @@ export function ClassDetailScreen() {
                     classLocation={classLocation}
                     classCode={classCode}
                     className={className}
+                    isClassActive={isClassActive}
+                    studentName="Student" // TODO: Replace with actual student name from auth
+                    onCheckInSuccess={handleCheckInSuccess}
                 />
             )}
         </SafeAreaView>

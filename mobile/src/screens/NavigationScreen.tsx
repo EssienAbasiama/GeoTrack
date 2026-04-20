@@ -18,9 +18,55 @@ import type { RootStackParamList } from '../types/navigation';
 import MapView, { Marker, Polyline, Polygon, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { ensureLocationPermission } from '../utils/permissions';
+import { lightImpact, successFeedback } from '../utils/haptics';
 
 const PRIMARY_COLOR = '#6343cc';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// OSRM public routing API endpoint (free, no API key required)
+const OSRM_API = 'https://router.project-osrm.org/route/v1/foot';
+
+// Decode Google polyline format (OSRM returns this format)
+function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
+    const points: { latitude: number; longitude: number }[] = [];
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
+
+    while (index < encoded.length) {
+        let b: number;
+        let shift = 0;
+        let result = 0;
+
+        do {
+            b = encoded.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+        } while (b >= 0x20);
+
+        const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+        lat += dlat;
+
+        shift = 0;
+        result = 0;
+
+        do {
+            b = encoded.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+        } while (b >= 0x20);
+
+        const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+        lng += dlng;
+
+        points.push({
+            latitude: lat / 1e5,
+            longitude: lng / 1e5,
+        });
+    }
+
+    return points;
+}
 
 // Point-in-polygon algorithm (ray casting)
 function isPointInPolygon(
@@ -96,6 +142,8 @@ export function NavigationScreen() {
     const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
     const [heading, setHeading] = useState<number>(0);
     const [isTracking, setIsTracking] = useState(true);
+    const [isFetchingRoute, setIsFetchingRoute] = useState(false);
+    const lastRouteRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
     // Animations
     const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -158,15 +206,28 @@ export function NavigationScreen() {
                 };
 
                 setUserLocation(initialCoords);
-                updateDistanceAndRoute(initialCoords);
+                await updateDistanceAndRoute(initialCoords);
                 setIsLoading(false);
 
-                // Start watching location
+                // After a brief delay, fit the map to show full route
+                setTimeout(() => {
+                    if (mapRef.current) {
+                        mapRef.current.fitToCoordinates(
+                            [initialCoords, destination],
+                            {
+                                edgePadding: { top: 120, right: 60, bottom: 280, left: 60 },
+                                animated: true,
+                            }
+                        );
+                    }
+                }, 500);
+
+                // Start watching location with optimized settings
                 locationSubscription = await Location.watchPositionAsync(
                     {
-                        accuracy: Location.Accuracy.High,
-                        timeInterval: 2000,
-                        distanceInterval: 5,
+                        accuracy: Location.Accuracy.BestForNavigation, // Best for navigation
+                        timeInterval: 1500, // Update every 1.5s for smoother tracking
+                        distanceInterval: 3, // Update every 3m for more responsive tracking
                     },
                     (location) => {
                         const newCoords = {
@@ -183,16 +244,16 @@ export function NavigationScreen() {
                             setIsInsideGeofence(inside);
                         }
 
-                        // Center map on user if tracking
+                        // Smooth center map on user if tracking
                         if (isTracking && mapRef.current) {
                             mapRef.current.animateToRegion(
                                 {
                                     latitude: newCoords.latitude,
                                     longitude: newCoords.longitude,
-                                    latitudeDelta: 0.005,
-                                    longitudeDelta: 0.005,
+                                    latitudeDelta: 0.003,
+                                    longitudeDelta: 0.003,
                                 },
-                                500
+                                600 // Smooth transition
                             );
                         }
                     }
@@ -213,8 +274,8 @@ export function NavigationScreen() {
     }, [destination, isTracking]);
 
     const updateDistanceAndRoute = useCallback(
-        (currentLocation: { latitude: number; longitude: number }) => {
-            // Calculate distance to destination
+        async (currentLocation: { latitude: number; longitude: number }) => {
+            // Calculate straight-line distance for UI updates
             const dist = getDistanceInMeters(
                 currentLocation.latitude,
                 currentLocation.longitude,
@@ -222,36 +283,87 @@ export function NavigationScreen() {
                 destination.longitude
             );
             setDistance(dist);
-            setEstimatedTime(estimateWalkingTime(dist));
+            
+            // Check if we need to fetch a new route
+            // Only fetch if: 1) No route yet, or 2) User moved > 30m from last route fetch point
+            const shouldFetchRoute = !lastRouteRef.current || 
+                getDistanceInMeters(
+                    currentLocation.latitude,
+                    currentLocation.longitude,
+                    lastRouteRef.current.latitude,
+                    lastRouteRef.current.longitude
+                ) > 30;
 
-            // Create a simple route (straight line for now)
-            // In production, you would use Google Directions API
-            setRouteCoordinates([currentLocation, destination]);
+            if (shouldFetchRoute && !isFetchingRoute) {
+                setIsFetchingRoute(true);
+                lastRouteRef.current = currentLocation;
+
+                try {
+                    // Fetch walking directions from OSRM
+                    const url = `${OSRM_API}/${currentLocation.longitude},${currentLocation.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=polyline`;
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                        const route = data.routes[0];
+                        
+                        // Decode the polyline geometry
+                        const decodedRoute = decodePolyline(route.geometry);
+                        setRouteCoordinates(decodedRoute);
+
+                        // Use OSRM's duration estimate (in seconds) - more accurate than our simple estimate
+                        const durationMinutes = Math.ceil(route.duration / 60);
+                        setEstimatedTime(durationMinutes);
+                    } else {
+                        // Fallback to simple straight line if OSRM fails
+                        setRouteCoordinates([currentLocation, destination]);
+                        setEstimatedTime(estimateWalkingTime(dist));
+                    }
+                } catch (error) {
+                    console.log('Route fetch error, using fallback:', error);
+                    // Fallback to simple straight line
+                    setRouteCoordinates([currentLocation, destination]);
+                    setEstimatedTime(estimateWalkingTime(dist));
+                } finally {
+                    setIsFetchingRoute(false);
+                }
+            } else if (!shouldFetchRoute) {
+                // Just update the estimated time based on remaining distance
+                setEstimatedTime(estimateWalkingTime(dist));
+            }
         },
-        [destination]
+        [destination, isFetchingRoute]
     );
 
     const centerOnUser = () => {
+        lightImpact();
         if (userLocation && mapRef.current) {
             mapRef.current.animateToRegion(
                 {
                     latitude: userLocation.latitude,
                     longitude: userLocation.longitude,
-                    latitudeDelta: 0.005,
-                    longitudeDelta: 0.005,
+                    latitudeDelta: 0.003,
+                    longitudeDelta: 0.003,
                 },
-                500
+                800 // Smoother, longer animation
             );
             setIsTracking(true);
         }
     };
 
     const fitToRoute = () => {
+        lightImpact();
         if (mapRef.current && userLocation) {
+            // Use the actual route coordinates if available, otherwise just user and destination
+            const coordsToFit = routeCoordinates.length > 0 
+                ? routeCoordinates 
+                : [userLocation, destination];
+            
             mapRef.current.fitToCoordinates(
-                [userLocation, destination],
+                coordsToFit,
                 {
-                    edgePadding: { top: 100, right: 50, bottom: 250, left: 50 },
+                    edgePadding: { top: 120, right: 60, bottom: 280, left: 60 },
                     animated: true,
                 }
             );
@@ -289,13 +401,25 @@ export function NavigationScreen() {
                 showsCompass={false}
                 showsMyLocationButton={false}
             >
-                {/* Route Line */}
+                {/* Route Line Shadow */}
+                {routeCoordinates.length >= 2 && (
+                    <Polyline
+                        coordinates={routeCoordinates}
+                        strokeColor="rgba(0, 0, 0, 0.15)"
+                        strokeWidth={10}
+                        lineCap="round"
+                        lineJoin="round"
+                    />
+                )}
+
+                {/* Route Line - Main */}
                 {routeCoordinates.length >= 2 && (
                     <Polyline
                         coordinates={routeCoordinates}
                         strokeColor={PRIMARY_COLOR}
-                        strokeWidth={5}
-                        lineDashPattern={[1]}
+                        strokeWidth={6}
+                        lineCap="round"
+                        lineJoin="round"
                     />
                 )}
 
@@ -303,7 +427,7 @@ export function NavigationScreen() {
                 {polygonCoords && polygonCoords.length >= 3 && (
                     <Polygon
                         coordinates={polygonCoords}
-                        fillColor={isInsideGeofence ? 'rgba(76, 175, 80, 0.2)' : 'rgba(99, 67, 204, 0.15)'}
+                        fillColor={isInsideGeofence ? 'rgba(76, 175, 80, 0.25)' : 'rgba(99, 67, 204, 0.15)'}
                         strokeColor={isInsideGeofence ? '#4CAF50' : PRIMARY_COLOR}
                         strokeWidth={3}
                     />
@@ -344,10 +468,14 @@ export function NavigationScreen() {
 
             {/* Header */}
             <SafeAreaView edges={['top']} style={styles.header}>
-                <View className="flex-row items-center px-4 py-2">
+                <View style={styles.headerContent}>
                     <Pressable
-                        onPress={() => navigation.goBack()}
-                        className="h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10"
+                        onPress={() => {
+                            lightImpact();
+                            navigation.goBack();
+                        }}
+                        style={styles.backButton}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
                         <Ionicons name="arrow-back" size={22} color="#181A20" />
                     </Pressable>
@@ -361,7 +489,8 @@ export function NavigationScreen() {
                     </View>
                     <Pressable
                         onPress={fitToRoute}
-                        className="h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10"
+                        style={styles.backButton}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
                         <MaterialIcons name="zoom-out-map" size={22} color="#5A5D6B" />
                     </Pressable>
@@ -373,6 +502,7 @@ export function NavigationScreen() {
                 <Pressable
                     onPress={centerOnUser}
                     style={[styles.recenterButton, { bottom: 280 }]}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                     <MaterialIcons name="my-location" size={24} color={PRIMARY_COLOR} />
                 </Pressable>
@@ -412,7 +542,7 @@ export function NavigationScreen() {
                     </View>
                 )}
 
-                <View className="bg-white px-5 py-4 rounded-b-[24px]">
+                <View className="bg-white px-5 py-4">
                     {/* Distance Info */}
                     <View className="flex-row items-center mb-4">
                         <View className="flex-1 items-center">
@@ -460,7 +590,10 @@ export function NavigationScreen() {
                     {/* Action Button */}
                     {isInsideGeofence ? (
                         <Pressable
-                            onPress={() => navigation.goBack()}
+                            onPress={() => {
+                                successFeedback();
+                                navigation.goBack();
+                            }}
                             className="h-14 items-center justify-center rounded-[14px] bg-[#4CAF50]"
                         >
                             <Text className="font-medium text-[16px] text-white">Done</Text>
@@ -468,7 +601,10 @@ export function NavigationScreen() {
                     ) : (
                         <View className="flex-row gap-3">
                             <Pressable
-                                onPress={() => navigation.goBack()}
+                                onPress={() => {
+                                    lightImpact();
+                                    navigation.goBack();
+                                }}
                                 className="flex-1 h-14 items-center justify-center rounded-[14px] bg-[#F1F2F6]"
                             >
                                 <Text className="font-medium text-[15px] text-[#5A5D6B]">Cancel</Text>
@@ -494,7 +630,27 @@ const styles = StyleSheet.create({
         top: 0,
         left: 0,
         right: 0,
-        zIndex: 10,
+        zIndex: 100,
+        elevation: 100,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+    },
+    backButton: {
+        height: 44,
+        width: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 22,
+        backgroundColor: '#fff',
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 8,
     },
     destinationMarker: {
         alignItems: 'center',
@@ -573,13 +729,15 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.15,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 4 },
-        elevation: 5,
+        elevation: 8,
+        zIndex: 50,
     },
     bottomCard: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
+        backgroundColor: '#fff',
         shadowColor: '#000',
         shadowOpacity: 0.1,
         shadowRadius: 20,

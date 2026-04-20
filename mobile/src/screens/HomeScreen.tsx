@@ -1,4 +1,4 @@
-import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, Text, View, Easing } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,20 +26,39 @@ export function HomeScreen() {
     const adminSheetRef = useRef<AdminCreateBottomSheetRef>(null);
 
     // --- Mock upcoming class data ---
+    // Using FUNAAB (Federal University of Agriculture, Abeokuta) coordinates for testing
+    // Class is set to be ACTIVE NOW for testing liveness check flow
     const upcomingClass = {
         code: 'ELE 512',
         name: 'Digital Signal Processing',
         venue: 'LT 201',
-        startTime: new Date(now.getTime() + 45 * 60 * 1000), // 45 mins from now
+        day: new Date().toLocaleDateString('en-US', { weekday: 'long' }), // Today
+        startTime: new Date(now.getTime() - 30 * 60 * 1000), // Started 30 mins ago (ACTIVE)
+        endTime: new Date(now.getTime() + 90 * 60 * 1000), // Ends in 1.5 hours
+        location: {
+            latitude: 7.2266,
+            longitude: 3.4400,
+        },
     };
 
-    // Calculate countdown
+    // Calculate countdown and determine if class is currently active
     const getCountdown = () => {
         const diff = upcomingClass.startTime.getTime() - now.getTime();
-        if (diff <= 0) return { minutes: 0, seconds: 0, isLive: true };
+        const endDiff = upcomingClass.endTime.getTime() - now.getTime();
+        
+        // Class is live if: started (diff <= 0) AND not ended (endDiff > 0)
+        const isLive = diff <= 0 && endDiff > 0;
+        
+        // Class is upcoming if: starts within 15 mins (can check in early)
+        const isUpcoming = diff > 0 && diff <= 15 * 60 * 1000;
+        
+        // Can check in if class is live OR upcoming (within 15 min grace period)
+        const canCheckIn = isLive || isUpcoming;
+        
+        if (diff <= 0) return { minutes: 0, seconds: 0, isLive, canCheckIn };
         const minutes = Math.floor(diff / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
-        return { minutes, seconds, isLive: false };
+        return { minutes, seconds, isLive, canCheckIn };
     };
     const countdown = getCountdown();
 
@@ -87,7 +106,11 @@ export function HomeScreen() {
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: isSuperAdmin ? '#4CAF50' : '#6755f2',
+        backgroundColor: isSuperAdmin 
+            ? '#4CAF50' 
+            : countdown.canCheckIn 
+                ? '#4CAF50' 
+                : '#6755f2',
         opacity: animatedValue.interpolate({
             inputRange: [0, 1],
             outputRange: [0.3, 0],
@@ -109,6 +132,29 @@ export function HomeScreen() {
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
         ]).start(() => navigation.navigate("CheckIn"));
+    };
+
+    const handleGetDirections = () => {
+        Animated.sequence([
+            Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
+            Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
+        ]).start(() => {
+            // Navigate to navigation screen with class location
+            navigation.navigate("Navigation", {
+                destination: upcomingClass.location,
+                classCode: upcomingClass.code,
+                className: upcomingClass.name,
+                locationName: upcomingClass.venue,
+            });
+        });
+    };
+
+    const handleStudentAction = () => {
+        if (countdown.canCheckIn) {
+            handleStudentCheckIn();
+        } else {
+            handleGetDirections();
+        }
     };
 
     const handleAdminCreate = () => {
@@ -318,17 +364,25 @@ export function HomeScreen() {
                                 />
                             ))}
 
-                            <Pressable onPress={isSuperAdmin ? handleAdminCreate : handleStudentCheckIn}>
+                            <Pressable onPress={isSuperAdmin ? handleAdminCreate : handleStudentAction}>
                                 <Animated.View
                                     style={{
                                         width: 130,
                                         height: 130,
                                         borderRadius: 65,
-                                        backgroundColor: isSuperAdmin ? '#4CAF50' : '#6343cc',
+                                        backgroundColor: isSuperAdmin 
+                                            ? '#4CAF50' 
+                                            : countdown.canCheckIn 
+                                                ? '#4CAF50' 
+                                                : '#6343cc',
                                         justifyContent: 'center',
                                         alignItems: 'center',
                                         transform: [{ scale: buttonScale }],
-                                        shadowColor: isSuperAdmin ? '#4CAF50' : '#6343cc',
+                                        shadowColor: isSuperAdmin 
+                                            ? '#4CAF50' 
+                                            : countdown.canCheckIn 
+                                                ? '#4CAF50' 
+                                                : '#6343cc',
                                         shadowOpacity: 0.4,
                                         shadowRadius: 20,
                                         shadowOffset: { width: 0, height: 8 },
@@ -342,11 +396,18 @@ export function HomeScreen() {
                                                 Create
                                             </Text>
                                         </>
+                                    ) : countdown.canCheckIn ? (
+                                        <>
+                                            <MaterialCommunityIcons name="account-check" size={32} color="#fff" />
+                                            <Text className="mt-2 font-heading text-[16px] text-white">
+                                                Clock In
+                                            </Text>
+                                        </>
                                     ) : (
                                         <>
-                                            <FontAwesome5 name="hand-pointer" size={28} color="#fff" />
-                                            <Text className="mt-2 font-heading text-[16px] text-white">
-                                                Check In
+                                            <MaterialIcons name="directions" size={32} color="#fff" />
+                                            <Text className="mt-2 font-heading text-[14px] text-white">
+                                                Directions
                                             </Text>
                                         </>
                                     )}

@@ -63,9 +63,10 @@ export const SetPolygonLocationBottomSheet = forwardRef<SetPolygonLocationBottom
         const [polygonCoords, setPolygonCoords] = useState<PolygonCoordinate[]>([]);
         const [isLoading, setIsLoading] = useState(false);
         const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+        // Default to FUNAAB (Federal University of Agriculture, Abeokuta)
         const [mapRegion, setMapRegion] = useState({
-            latitude: 6.5244,
-            longitude: 3.3792,
+            latitude: 7.2266,
+            longitude: 3.4400,
             latitudeDelta: 0.002,
             longitudeDelta: 0.002,
         });

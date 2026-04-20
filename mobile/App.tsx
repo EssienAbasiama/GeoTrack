@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -16,6 +16,13 @@ import {
 import './global.css';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { RoleProvider } from './src/store/RoleContext';
+import { 
+    requestNotificationPermissions, 
+    configureAndroidChannel,
+    addNotificationResponseListener,
+    addNotificationReceivedListener,
+    clearBadge,
+} from './src/services/notifications';
 
 /**
  * App Component
@@ -45,6 +52,40 @@ export default function App() {
         WorkSans_600SemiBold,
         WorkSans_700Bold,
     });
+
+    // Initialize notifications
+    useEffect(() => {
+        const initNotifications = async () => {
+            // Configure Android notification channels
+            await configureAndroidChannel();
+            
+            // Request permissions
+            await requestNotificationPermissions();
+            
+            // Clear badge on app open
+            await clearBadge();
+        };
+
+        initNotifications();
+
+        // Listen for notification interactions
+        const responseSubscription = addNotificationResponseListener((response) => {
+            const data = response.notification.request.content.data;
+            console.log('Notification tapped:', data);
+            // Handle navigation based on notification type
+            // e.g., navigate to class detail if classCode is present
+        });
+
+        // Listen for foreground notifications
+        const receivedSubscription = addNotificationReceivedListener((notification) => {
+            console.log('Notification received in foreground:', notification);
+        });
+
+        return () => {
+            responseSubscription.remove();
+            receivedSubscription.remove();
+        };
+    }, []);
 
     // Don't render anything until fonts are loaded
     if (!fontsLoaded) return null;

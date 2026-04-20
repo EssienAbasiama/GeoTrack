@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
+import { selectionFeedback } from "../utils/haptics";
 
 interface BottomNavProps {
     active: string;
@@ -8,6 +9,13 @@ interface BottomNavProps {
 }
 
 export function BottomNav({ active, onNavigate }: BottomNavProps) {
+    const handleNavigate = (screen: string) => {
+        if (screen !== active) {
+            selectionFeedback(); // Haptic on tab change
+        }
+        onNavigate(screen);
+    };
+
     return (
         <View
             style={{
@@ -45,7 +53,7 @@ export function BottomNav({ active, onNavigate }: BottomNavProps) {
                     }}
                 >
                     <Pressable
-                        onPress={() => onNavigate("home")}
+                        onPress={() => handleNavigate("home")}
                         style={{ alignItems: "center", flex: 1 }}
                     >
                         <Ionicons
@@ -64,7 +72,7 @@ export function BottomNav({ active, onNavigate }: BottomNavProps) {
                         </Text>
                     </Pressable>
                     <Pressable
-                        onPress={() => onNavigate("calendar")}
+                        onPress={() => handleNavigate("calendar")}
                         style={{ alignItems: "center", flex: 1 }}
                     >
                         <Ionicons
@@ -83,7 +91,7 @@ export function BottomNav({ active, onNavigate }: BottomNavProps) {
                         </Text>
                     </Pressable>
                     <Pressable
-                        onPress={() => onNavigate("profile")}
+                        onPress={() => handleNavigate("profile")}
                         style={{ alignItems: "center", flex: 1 }}
                     >
                         <Ionicons

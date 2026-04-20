@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
-import { PieChart, LineChart, BarChart } from 'react-native-gifted-charts';
+import { PieChart, LineChart, BarChart } from '../components/charts';
 
 const PRIMARY_COLOR = '#6343cc';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -363,7 +363,7 @@ export function StudentDetailScreen() {
         ]).start();
     }, []);
 
-    // Pie chart data for react-native-gifted-charts
+    // Pie chart data for custom charts
     const pieChartData = [
         { value: analytics.presentSessions, color: '#22C55E', text: `${analytics.presentSessions}` },
         { value: analytics.lateSessions, color: '#F59E0B', text: `${analytics.lateSessions}` },
@@ -371,14 +371,13 @@ export function StudentDetailScreen() {
         { value: analytics.excusedSessions, color: '#8B5CF6', text: `${analytics.excusedSessions}` },
     ].filter(d => d.value > 0);
 
-    // Line chart data for react-native-gifted-charts
+    // Line chart data for custom charts
     const lineChartData = weeklyData.map(d => ({
         value: d.value,
         label: d.label.split(' ')[1],
-        dataPointText: `${d.value}%`,
     }));
 
-    // Bar chart data for react-native-gifted-charts
+    // Bar chart data for custom charts
     const barChartDataFormatted = weeklyData.map(d => ({
         value: d.duration,
         label: d.label.split(' ')[1],
@@ -551,15 +550,14 @@ export function StudentDetailScreen() {
                                 <View className="items-center">
                                     <PieChart
                                         data={pieChartData}
-                                        donut
                                         radius={70}
                                         innerRadius={45}
                                         centerLabelComponent={() => (
-                                            <View className="items-center">
-                                                <Text className="font-heading text-[20px] text-[#181A20]">
+                                            <View style={{ alignItems: 'center' }}>
+                                                <Text style={{ fontFamily: 'System', fontWeight: '600', fontSize: 20, color: '#181A20' }}>
                                                     {analytics.totalSessions}
                                                 </Text>
-                                                <Text className="text-[10px] text-[#8F94A4]">Sessions</Text>
+                                                <Text style={{ fontSize: 10, color: '#8F94A4' }}>Sessions</Text>
                                             </View>
                                         )}
                                     />
@@ -601,22 +599,12 @@ export function StudentDetailScreen() {
                                 </Text>
                                 <LineChart
                                     data={lineChartData}
-                                    width={SCREEN_WIDTH - 100}
+                                    width={SCREEN_WIDTH - 80}
                                     height={150}
                                     color={PRIMARY_COLOR}
-                                    thickness={3}
-                                    dataPointsColor={PRIMARY_COLOR}
-                                    xAxisLabelTextStyle={{ color: '#8F94A4', fontSize: 10 }}
-                                    yAxisTextStyle={{ color: '#8F94A4', fontSize: 10 }}
-                                    hideRules
                                     curved
                                     areaChart
-                                    startFillColor="rgba(99, 67, 204, 0.3)"
-                                    endFillColor="rgba(99, 67, 204, 0.05)"
-                                    startOpacity={0.9}
-                                    endOpacity={0.2}
-                                    spacing={40}
-                                    initialSpacing={20}
+                                    showDataPoints
                                     maxValue={100}
                                     noOfSections={4}
                                 />
@@ -640,19 +628,15 @@ export function StudentDetailScreen() {
                                 </View>
                                 <BarChart
                                     data={barChartDataFormatted}
-                                    width={SCREEN_WIDTH - 100}
+                                    width={SCREEN_WIDTH - 80}
                                     height={150}
                                     barWidth={25}
                                     spacing={20}
-                                    initialSpacing={15}
                                     roundedTop
                                     roundedBottom
-                                    xAxisLabelTextStyle={{ color: '#8F94A4', fontSize: 10 }}
-                                    yAxisTextStyle={{ color: '#8F94A4', fontSize: 10 }}
-                                    hideRules
+                                    frontColor={PRIMARY_COLOR}
                                     noOfSections={4}
                                     maxValue={150}
-                                    yAxisSuffix="m"
                                 />
                                 <Text className="text-[11px] text-[#8F94A4] text-center mt-2">
                                     Minutes spent in class per session
