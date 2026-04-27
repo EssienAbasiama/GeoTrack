@@ -1,24 +1,19 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../store/AuthContext';
+import { ValidatedInput } from '../../components/ValidatedInput';
+import useFormValidation, { validators } from '../../hooks/useFormValidation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
 
 type RegisterRole = 'student' | 'lecturer';
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export function RegisterScreen({ navigation, route }: Props) {
     const { startRegistration, authLoading } = useAuth();
     const [role, setRole] = useState<RegisterRole>(route.params?.inviteRole ?? 'student');
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [matricNo, setMatricNo] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
 
     const inviteToken = route.params?.inviteToken ?? '';
     const roleLockedByInvite = Boolean(route.params?.inviteRole);
@@ -30,43 +25,42 @@ export function RegisterScreen({ navigation, route }: Props) {
         classCode: route.params?.classCode,
     }), [inviteToken, route.params?.inviteRole, route.params?.department, route.params?.classCode]);
 
+    const form = useFormValidation({
+        name: { rules: [validators.required('Please enter your full name')] },
+        email: { rules: [validators.required(), validators.email()] },
+        matricNo: { rules: [] }, // conditionally validated below
+        password: { rules: [validators.required(), validators.minLength(8, 'Password must be at least 8 characters')] },
+        confirmPassword: {
+            rules: [
+                validators.required('Please confirm your password'),
+                validators.matches('password', 'Passwords do not match'),
+            ],
+        },
+    });
+
     const handleContinue = async () => {
-        if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
-            Alert.alert('Incomplete details', 'Please fill all required fields.');
+        // Add matric rule dynamically for students
+        if (role === 'student' && !form.values.matricNo.trim()) {
+            form.setError('matricNo', 'Matric number is required for students');
+            const { valid } = form.validateAll();
+            if (!valid) return;
             return;
         }
 
-        if (!emailRegex.test(email.trim())) {
-            Alert.alert('Invalid email', 'Enter a valid email address.');
-            return;
-        }
-
-        if (role === 'student' && !matricNo.trim()) {
-            Alert.alert('Missing matric number', 'Students must provide a matric number.');
-            return;
-        }
-
-        if (password.length < 8) {
-            Alert.alert('Weak password', 'Password must be at least 8 characters.');
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            Alert.alert('Password mismatch', 'Passwords do not match.');
-            return;
-        }
+        const { valid } = form.validateAll();
+        if (!valid) return;
 
         const result = await startRegistration({
             role,
-            name: name.trim(),
-            email: email.trim(),
-            matricNo: role === 'student' ? matricNo.trim() : undefined,
-            password,
+            name: form.values.name.trim(),
+            email: form.values.email.trim(),
+            matricNo: role === 'student' ? form.values.matricNo.trim() : undefined,
+            password: form.values.password,
             invite: inviteMeta,
         });
 
         if (!result.ok) {
-            Alert.alert('Registration failed', result.message || 'Please try again.');
+            form.setError('email', result.message ?? 'Registration failed. Please try again.');
             return;
         }
 
@@ -107,32 +101,56 @@ export function RegisterScreen({ navigation, route }: Props) {
                 ) : null}
 
                 <View className="mt-6 gap-4">
-                    <View>
-                        <Text className="mb-2 text-[13px] text-[#4B5563]">Full Name</Text>
-                        <TextInput value={name} onChangeText={setName} className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px]" placeholder="Enter your full name" />
-                    </View>
+                    <ValidatedInput
+                        label="Full Name"
+                        value={form.values.name}
+                        onChangeText={v => form.setValue('name', v)}
+                        error={form.errors.name}
+                        placeholder="Enter your full name"
+                        textContentType="name"
+                    />
 
-                    <View>
-                        <Text className="mb-2 text-[13px] text-[#4B5563]">Email</Text>
-                        <TextInput value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px]" placeholder="name@college.edu" />
-                    </View>
+                    <ValidatedInput
+                        label="Email"
+                        value={form.values.email}
+                        onChangeText={v => form.setValue('email', v)}
+                        error={form.errors.email}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        placeholder="name@college.edu"
+                        textContentType="emailAddress"
+                    />
 
                     {role === 'student' ? (
-                        <View>
-                            <Text className="mb-2 text-[13px] text-[#4B5563]">Matric Number</Text>
-                            <TextInput value={matricNo} onChangeText={setMatricNo} autoCapitalize="characters" className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px]" placeholder="e.g. 180404001" />
-                        </View>
+                        <ValidatedInput
+                            label="Matric Number"
+                            value={form.values.matricNo}
+                            onChangeText={v => form.setValue('matricNo', v)}
+                            error={form.errors.matricNo}
+                            autoCapitalize="characters"
+                            placeholder="e.g. 180404001"
+                        />
                     ) : null}
 
-                    <View>
-                        <Text className="mb-2 text-[13px] text-[#4B5563]">Password</Text>
-                        <TextInput value={password} onChangeText={setPassword} secureTextEntry className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px]" placeholder="Minimum 8 characters" />
-                    </View>
+                    <ValidatedInput
+                        label="Password"
+                        value={form.values.password}
+                        onChangeText={v => form.setValue('password', v)}
+                        error={form.errors.password}
+                        secure
+                        placeholder="Minimum 8 characters"
+                        textContentType="newPassword"
+                    />
 
-                    <View>
-                        <Text className="mb-2 text-[13px] text-[#4B5563]">Confirm Password</Text>
-                        <TextInput value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px]" placeholder="Re-enter password" />
-                    </View>
+                    <ValidatedInput
+                        label="Confirm Password"
+                        value={form.values.confirmPassword}
+                        onChangeText={v => form.setValue('confirmPassword', v)}
+                        error={form.errors.confirmPassword}
+                        secure
+                        placeholder="Re-enter password"
+                        textContentType="newPassword"
+                    />
 
                     <View className="rounded-xl bg-[#F8FAFC] p-3">
                         <Text className="text-[12px] text-[#64748B]">Invite token: {inviteToken || 'Not provided (you can still continue for demo flow)'}</Text>

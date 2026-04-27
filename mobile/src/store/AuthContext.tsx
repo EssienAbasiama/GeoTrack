@@ -1,5 +1,23 @@
-import React, { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import React, {
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+    type ReactNode,
+} from 'react';
+import axios from 'axios';
 import { useRole, type UserRole } from './RoleContext';
+import { authApi, type ApiUser } from '../services/apiClient';
+import {
+    clearAuthStorage,
+    getAccessToken,
+    getRefreshToken,
+    getUserData,
+    setAccessToken,
+    setRefreshToken,
+    setUserData,
+} from '../utils/secureStorage';
 
 type RegisterRole = 'student' | 'lecturer';
 
@@ -32,15 +50,17 @@ interface AuthContextType {
     isAuthenticated: boolean;
     user: AuthUser | null;
     authLoading: boolean;
+    /** True only while the initial token-restore check runs on app launch. */
+    isInitialising: boolean;
     pendingRegistration: PendingRegistration | null;
     pendingEmail: string | null;
     signIn: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
-    signOut: () => void;
+    signOut: () => Promise<void>;
     startRegistration: (data: PendingRegistration) => Promise<{ ok: boolean; message?: string }>;
     verifyRegistrationEmail: (code: string) => Promise<{ ok: boolean; message?: string }>;
     resendVerificationCode: () => Promise<void>;
     requestPasswordReset: (email: string) => Promise<{ ok: boolean; message?: string }>;
-    resetPassword: (code: string, nextPassword: string) => Promise<{ ok: boolean; message?: string }>;
+    resetPassword: (code: string, nextPassword: string, email?: string) => Promise<{ ok: boolean; message?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,163 +69,219 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
-const MOCK_VERIFICATION_CODE = '246810';
-const MOCK_RESET_CODE = '135790';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const apiUserToAuthUser = (u: ApiUser, invite?: InviteMeta): AuthUser => ({
+    id: String(u.id),
+    name: u.name,
+    email: u.email,
+    role: u.role as RegisterRole,
+    matricNo: u.matric_no ?? undefined,
+    invite,
+});
 
+/** Extract a human-readable error message from any thrown value. */
+const extractError = (err: unknown, fallback = 'Something went wrong. Please try again.'): string => {
+    if (axios.isAxiosError(err)) {
+        return (
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            err.message ||
+            fallback
+        );
+    }
+    if (err instanceof Error) return err.message;
+    return fallback;
+};
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: AuthProviderProps) {
     const { setRole } = useRole();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [authLoading, setAuthLoading] = useState(false);
+    const [isInitialising, setIsInitialising] = useState(true);
     const [pendingRegistration, setPendingRegistration] = useState<PendingRegistration | null>(null);
     const [pendingEmail, setPendingEmail] = useState<string | null>(null);
     const [passwordResetEmail, setPasswordResetEmail] = useState<string | null>(null);
 
+    // ── Restore session on app launch ─────────────────────────────────────────
+    useEffect(() => {
+        const restoreSession = async () => {
+            try {
+                const token = await getAccessToken();
+                if (!token) return;
+
+                // Restore user from the cached data stored at last login.
+                // We intentionally don't call /me here: it keeps startup instant
+                // and avoids blocking on a slow network, The token refresh interceptor
+                // in apiClient will silently renew expired tokens on the first API call.
+                const cached = await getUserData();
+                if (cached) {
+                    const parsed: ApiUser = JSON.parse(cached);
+                    const restored = apiUserToAuthUser(parsed);
+                    setUser(restored);
+                    setRole(restored.role as UserRole);
+                }
+            } catch {
+                // Corrupt cache – clear and stay logged out
+                await clearAuthStorage();
+            } finally {
+                setIsInitialising(false);
+            }
+        };
+
+        restoreSession();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ── Sign in ───────────────────────────────────────────────────────────────
     const signIn = async (email: string, password: string) => {
         setAuthLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        try {
+            const { data } = await authApi.login({ email: email.trim(), password });
+            await setAccessToken(data.tokens.access_token);
+            await setRefreshToken(data.tokens.refresh_token);
+            await setUserData(data.user);
 
-        const normalizedEmail = email.trim().toLowerCase();
-        if (!normalizedEmail || !password.trim()) {
+            const nextUser = apiUserToAuthUser(data.user);
+            setUser(nextUser);
+            setRole(nextUser.role as UserRole);
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err) };
+        } finally {
             setAuthLoading(false);
-            return { ok: false, message: 'Please enter your email and password.' };
         }
-
-        const inferredRole: RegisterRole = normalizedEmail.includes('lect') || normalizedEmail.includes('hod')
-            ? 'lecturer'
-            : 'student';
-
-        const nextUser: AuthUser = {
-            id: `usr_${Date.now()}`,
-            name: inferredRole === 'lecturer' ? 'Lecturer User' : 'Student User',
-            email: normalizedEmail,
-            role: inferredRole,
-            matricNo: inferredRole === 'student' ? 'TEMP-MATRIC' : undefined,
-        };
-
-        setUser(nextUser);
-        setRole(inferredRole as UserRole);
-        setAuthLoading(false);
-        return { ok: true };
     };
 
-    const signOut = () => {
-        setUser(null);
-        setRole('student');
+    // ── Sign out ──────────────────────────────────────────────────────────────
+    const signOut = async () => {
+        try {
+            const refreshToken = await getRefreshToken();
+            await authApi.logout({ refresh_token: refreshToken ?? undefined });
+        } catch { /* best-effort */ } finally {
+            await clearAuthStorage();
+            setUser(null);
+            setRole('student');
+            setPendingRegistration(null);
+            setPendingEmail(null);
+            setPasswordResetEmail(null);
+        }
     };
 
+    // ── Register ──────────────────────────────────────────────────────────────
     const startRegistration = async (data: PendingRegistration) => {
         setAuthLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        try {
+            const email = data.email.trim().toLowerCase();
+            await authApi.register({
+                name: data.name.trim(),
+                email,
+                password: data.password,
+                password_confirmation: data.password,
+                role: data.role,
+                matric_no: data.role === 'student' ? data.matricNo?.trim() : undefined,
+            });
 
-        if (!data.name.trim() || !data.email.trim() || !data.password.trim()) {
+            setPendingRegistration({ ...data, email });
+            setPendingEmail(email);
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err) };
+        } finally {
             setAuthLoading(false);
-            return { ok: false, message: 'Fill all required fields.' };
         }
-
-        if (data.role === 'student' && !data.matricNo?.trim()) {
-            setAuthLoading(false);
-            return { ok: false, message: 'Matric number is required for students.' };
-        }
-
-        setPendingRegistration({
-            ...data,
-            email: data.email.trim().toLowerCase(),
-        });
-        setPendingEmail(data.email.trim().toLowerCase());
-        setAuthLoading(false);
-        return { ok: true };
     };
 
+    // ── Verify email (registration) ───────────────────────────────────────────
     const verifyRegistrationEmail = async (code: string) => {
+        if (!pendingEmail) return { ok: false, message: 'No pending registration found.' };
+
         setAuthLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+            const { data } = await authApi.verifyEmailCode({ email: pendingEmail, code });
+            await setAccessToken(data.tokens.access_token);
+            await setRefreshToken(data.tokens.refresh_token);
+            await setUserData(data.user);
 
-        if (!pendingRegistration) {
+            const nextUser = apiUserToAuthUser(data.user, pendingRegistration?.invite);
+            setUser(nextUser);
+            setRole(nextUser.role as UserRole);
+            setPendingRegistration(null);
+            setPendingEmail(null);
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err, 'Invalid or expired code.') };
+        } finally {
             setAuthLoading(false);
-            return { ok: false, message: 'No pending registration found.' };
         }
-
-        if (code !== MOCK_VERIFICATION_CODE) {
-            setAuthLoading(false);
-            return { ok: false, message: 'Invalid verification code.' };
-        }
-
-        const nextUser: AuthUser = {
-            id: `usr_${Date.now()}`,
-            name: pendingRegistration.name,
-            email: pendingRegistration.email,
-            role: pendingRegistration.role,
-            matricNo: pendingRegistration.matricNo,
-            invite: pendingRegistration.invite,
-        };
-
-        setUser(nextUser);
-        setRole(pendingRegistration.role as UserRole);
-        setPendingRegistration(null);
-        setPendingEmail(null);
-        setAuthLoading(false);
-        return { ok: true };
     };
 
+    // ── Resend verification code ──────────────────────────────────────────────
     const resendVerificationCode = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        if (!pendingEmail) return;
+        try {
+            await authApi.resendEmailCode({ email: pendingEmail });
+        } catch { /* ignore – UI already shows resend button */ }
     };
 
+    // ── Forgot password ───────────────────────────────────────────────────────
     const requestPasswordReset = async (email: string) => {
         setAuthLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 400));
-
-        const normalizedEmail = email.trim().toLowerCase();
-        if (!normalizedEmail) {
+        try {
+            const normalized = email.trim().toLowerCase();
+            await authApi.forgotPassword({ email: normalized });
+            setPasswordResetEmail(normalized);
+            setPendingEmail(normalized);
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err) };
+        } finally {
             setAuthLoading(false);
-            return { ok: false, message: 'Enter your email address.' };
         }
-
-        setPasswordResetEmail(normalizedEmail);
-        setPendingEmail(normalizedEmail);
-        setAuthLoading(false);
-        return { ok: true };
     };
 
-    const resetPassword = async (code: string, nextPassword: string) => {
+    // ── Reset password ────────────────────────────────────────────────────────
+    const resetPassword = async (code: string, nextPassword: string, emailOverride?: string) => {
+        const email = emailOverride ?? passwordResetEmail;
+        if (!email) return { ok: false, message: 'No password reset request found.' };
+
         setAuthLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 400));
-
-        if (!passwordResetEmail) {
+        try {
+            await authApi.resetPassword({
+                email,
+                code: code.trim(),
+                password: nextPassword,
+                password_confirmation: nextPassword,
+            });
+            setPasswordResetEmail(null);
+            setPendingEmail(null);
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err, 'Invalid reset code.') };
+        } finally {
             setAuthLoading(false);
-            return { ok: false, message: 'No password reset request found.' };
         }
-
-        if (code !== MOCK_RESET_CODE) {
-            setAuthLoading(false);
-            return { ok: false, message: 'Invalid reset code.' };
-        }
-
-        if (!nextPassword.trim()) {
-            setAuthLoading(false);
-            return { ok: false, message: 'Enter a new password.' };
-        }
-
-        setPasswordResetEmail(null);
-        setPendingEmail(null);
-        setAuthLoading(false);
-        return { ok: true };
     };
 
-    const value = useMemo<AuthContextType>(() => ({
-        isAuthenticated: Boolean(user),
-        user,
-        authLoading,
-        pendingRegistration,
-        pendingEmail,
-        signIn,
-        signOut,
-        startRegistration,
-        verifyRegistrationEmail,
-        resendVerificationCode,
-        requestPasswordReset,
-        resetPassword,
-    }), [user, authLoading, pendingRegistration, pendingEmail]);
+    const value = useMemo<AuthContextType>(
+        () => ({
+            isAuthenticated: Boolean(user),
+            user,
+            authLoading,
+            isInitialising,
+            pendingRegistration,
+            pendingEmail,
+            signIn,
+            signOut,
+            startRegistration,
+            verifyRegistrationEmail,
+            resendVerificationCode,
+            requestPasswordReset,
+            resetPassword,
+        }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [user, authLoading, isInitialising, pendingRegistration, pendingEmail],
+    );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

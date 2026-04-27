@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -22,6 +23,8 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'role',
+        'matric_no',
         'password',
     ];
 
@@ -34,6 +37,14 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
+
+    /**
+     * @return HasMany<RefreshToken, $this>
+     */
+    public function refreshTokens(): HasMany
+    {
+        return $this->hasMany(RefreshToken::class);
+    }
 
     /**
      * Get the attributes that should be cast.

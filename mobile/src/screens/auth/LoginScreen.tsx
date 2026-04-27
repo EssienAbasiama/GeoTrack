@@ -1,24 +1,33 @@
-import React, { useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import React from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../store/AuthContext';
+import { ValidatedInput } from '../../components/ValidatedInput';
+import useFormValidation, { validators } from '../../hooks/useFormValidation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
     const { signIn, authLoading } = useAuth();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+
+    const form = useFormValidation(
+        {
+            email: { rules: [validators.required(), validators.email()] },
+            password: { rules: [validators.required('Please enter your password')] },
+        },
+    );
 
     const handleSignIn = async () => {
-        const result = await signIn(email, password);
+        const { valid } = form.validateAll();
+        if (!valid) return;
+
+        const result = await signIn(form.values.email, form.values.password);
         if (!result.ok) {
-            Alert.alert('Sign in failed', result.message || 'Please try again.');
-            return;
+            // Surface server error inline on the email field so the user sees it
+            form.setError('email', result.message ?? 'Sign in failed. Please try again.');
         }
-        navigation.replace('MainTabs');
     };
 
     return (
@@ -27,28 +36,26 @@ export function LoginScreen({ navigation }: Props) {
             <Text className="mt-2 text-[14px] text-[#6B7280]">Sign in to continue attendance and class management.</Text>
 
             <View className="mt-8 gap-4">
-                <View>
-                    <Text className="mb-2 text-[13px] text-[#4B5563]">Email</Text>
-                    <TextInput
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px] text-[#111827]"
-                        placeholder="you@school.edu"
-                    />
-                </View>
+                <ValidatedInput
+                    label="Email"
+                    value={form.values.email}
+                    onChangeText={v => form.setValue('email', v)}
+                    error={form.errors.email}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    placeholder="you@school.edu"
+                    textContentType="emailAddress"
+                />
 
-                <View>
-                    <Text className="mb-2 text-[13px] text-[#4B5563]">Password</Text>
-                    <TextInput
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry
-                        className="h-13 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px] text-[#111827]"
-                        placeholder="Enter password"
-                    />
-                </View>
+                <ValidatedInput
+                    label="Password"
+                    value={form.values.password}
+                    onChangeText={v => form.setValue('password', v)}
+                    error={form.errors.password}
+                    secure
+                    placeholder="Enter password"
+                    textContentType="password"
+                />
             </View>
 
             <Pressable onPress={() => navigation.navigate('ForgotPassword')} className="mt-3 self-end">

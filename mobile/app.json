@@ -31,7 +31,8 @@
         {
           "locationWhenInUsePermission": "GeoTrack uses your location to generate a check-in route to your class."
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

@@ -20,6 +20,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { RoleProvider } from './src/store/RoleContext';
 import { AuthProvider } from './src/store/AuthContext';
 import { AttendanceControlProvider } from './src/store/AttendanceControlContext';
+import { navigationRef } from './src/services/apiClient';
 import {
     requestNotificationPermissions,
     configureAndroidChannel,
@@ -111,7 +112,7 @@ export default function App() {
                         <BottomSheetModalProvider>
                             <View style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
                                 <AuthProvider>
-                                    <NavigationContainer linking={linking}>
+                                    <NavigationContainer linking={linking} ref={navigationRef}>
                                         <RootNavigator />
                                     </NavigationContainer>
                                 </AuthProvider>

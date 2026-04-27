@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,23 +17,24 @@ use Illuminate\Support\Facades\Route;
 
 // ── Public routes ────────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
-    // POST /api/auth/register
-    // POST /api/auth/login
-    // (controllers to be added)
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/verify-email-code', [AuthController::class, 'verifyEmailCode']);
+    Route::post('/resend-email-code', [AuthController::class, 'resendEmailCode']);
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/refresh', [AuthController::class, 'refresh']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // ── Protected routes (require Sanctum token) ─────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
+    Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+
     // Return the authenticated user
     Route::get('/user', function (Request $request) {
         return $request->user();
-    });
-
-    // POST /api/auth/logout
-    Route::post('/auth/logout', function (Request $request) {
-        $request->user()->currentAccessToken()->delete();
-        return response()->json(['message' => 'Logged out successfully']);
     });
 
     // ── Attendance routes (to be implemented) ─────────────────────────────

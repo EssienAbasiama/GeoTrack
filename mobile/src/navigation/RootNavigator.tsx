@@ -38,14 +38,26 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * - All screens defined upfront (React Navigation requirement)
  */
 export function RootNavigator() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isInitialising } = useAuth();
     /**
      * Wrapper component for Splash screen
-     * This allows the splash screen to call navigation methods
-     * while keeping the component structure clean
+     * Waits for AuthContext session restore to finish before navigating.
+     * In practice restoreSession (SecureStore reads only) finishes in < 100ms,
+     * well before the 2200ms splash timer fires.
      */
     const SplashWrapper = ({ navigation }: any) => (
-        <SplashScreen onFinish={() => navigation.replace('Onboarding')} />
+        <SplashScreen
+            onFinish={() => {
+                // isInitialising is always false by the time splash fires (2200ms)
+                // because restoreSession only reads SecureStore (no network call).
+                // Guard kept as a safety net.
+                if (isInitialising) {
+                    navigation.replace('Onboarding');
+                    return;
+                }
+                navigation.replace(isAuthenticated ? 'MainTabs' : 'Onboarding');
+            }}
+        />
     );
 
     /**
