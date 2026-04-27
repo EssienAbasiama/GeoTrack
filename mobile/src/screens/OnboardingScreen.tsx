@@ -5,9 +5,10 @@ import { OrbitHero } from "../components/onboarding/OrbitHero";
 
 type OnboardingScreenProps = {
     onGetStarted: () => void;
+    onUseInvite?: () => void;
 };
 
-export function OnboardingScreen({ onGetStarted }: OnboardingScreenProps) {
+export function OnboardingScreen({ onGetStarted, onUseInvite }: OnboardingScreenProps) {
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -37,6 +38,13 @@ export function OnboardingScreen({ onGetStarted }: OnboardingScreenProps) {
                         className="mt-6 h-14 items-center justify-center rounded-2xl bg-[#5B3DF5] shadow-lg shadow-[#4A34D7]/25 active:opacity-90"
                     >
                         <Text className="font-heading text-[18px] leading-[22px] text-white">Get started</Text>
+                    </Pressable>
+
+                    <Pressable
+                        onPress={onUseInvite}
+                        className="mt-3 h-12 items-center justify-center rounded-2xl border border-[#D9DCE8] bg-white"
+                    >
+                        <Text className="font-medium text-[14px] text-[#4B5563]">I have an invite link / QR</Text>
                     </Pressable>
                 </View>
             </Animated.View>

@@ -6,6 +6,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types/navigation";
 import { useRole } from "../store/RoleContext";
+import { useAttendanceControl } from "../store/AttendanceControlContext";
 import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from "../components/AdminCreateBottomSheet";
 
 const avatarSource = { uri: "https://randomuser.me/api/portraits/men/32.jpg" };
@@ -23,6 +24,7 @@ export function HomeScreen() {
     const now = useLiveClock();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { isSuperAdmin, isStudent, isLecturer, isHOC, role } = useRole();
+    const { isAttendanceEnabled, setAttendanceEnabled } = useAttendanceControl();
     const adminSheetRef = useRef<AdminCreateBottomSheetRef>(null);
 
     // --- Mock upcoming class data ---
@@ -61,6 +63,8 @@ export function HomeScreen() {
         return { minutes, seconds, isLive, canCheckIn };
     };
     const countdown = getCountdown();
+    const attendanceEnabled = isAttendanceEnabled(upcomingClass.code);
+    const canStudentCheckIn = countdown.canCheckIn && attendanceEnabled;
 
     // --- Screen fade animation ---
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -108,9 +112,15 @@ export function HomeScreen() {
         borderRadius: size / 2,
         backgroundColor: isSuperAdmin
             ? '#4CAF50'
-            : countdown.canCheckIn
-                ? '#4CAF50'
-                : '#6755f2',
+            : isLecturer
+                ? countdown.isLive
+                    ? attendanceEnabled
+                        ? '#EF4444'
+                        : '#4CAF50'
+                    : '#6755f2'
+                : canStudentCheckIn
+                    ? '#4CAF50'
+                    : '#6755f2',
         opacity: animatedValue.interpolate({
             inputRange: [0, 1],
             outputRange: [0.3, 0],
@@ -150,11 +160,24 @@ export function HomeScreen() {
     };
 
     const handleStudentAction = () => {
-        if (countdown.canCheckIn) {
+        if (canStudentCheckIn) {
             handleStudentCheckIn();
         } else {
             handleGetDirections();
         }
+    };
+
+    const handleLecturerAction = () => {
+        Animated.sequence([
+            Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
+            Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
+        ]).start(() => {
+            if (countdown.isLive) {
+                setAttendanceEnabled(upcomingClass.code, !attendanceEnabled);
+                return;
+            }
+            handleGetDirections();
+        });
     };
 
     const handleAdminCreate = () => {
@@ -194,6 +217,19 @@ export function HomeScreen() {
         return badges[role] || badges.student;
     };
     const roleBadge = getRoleBadge();
+    const isLecturerLive = isLecturer && countdown.isLive;
+    const shouldShowDirections = !isSuperAdmin && !isLecturerLive && ((isLecturer && !countdown.isLive) || !canStudentCheckIn);
+    const mainButtonColor = isSuperAdmin
+        ? '#4CAF50'
+        : isLecturerLive
+            ? attendanceEnabled
+                ? '#EF4444'
+                : '#4CAF50'
+            : shouldShowDirections
+                ? '#6343cc'
+                : '#4CAF50';
+
+    const mainShadowColor = mainButtonColor;
 
     return (
         <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-[#F6F6F9] px-5 pt-3">
@@ -364,25 +400,25 @@ export function HomeScreen() {
                                 />
                             ))}
 
-                            <Pressable onPress={isSuperAdmin ? handleAdminCreate : handleStudentAction}>
+                            <Pressable
+                                onPress={
+                                    isSuperAdmin
+                                        ? handleAdminCreate
+                                        : isLecturer
+                                            ? handleLecturerAction
+                                            : handleStudentAction
+                                }
+                            >
                                 <Animated.View
                                     style={{
                                         width: 130,
                                         height: 130,
                                         borderRadius: 65,
-                                        backgroundColor: isSuperAdmin
-                                            ? '#4CAF50'
-                                            : countdown.canCheckIn
-                                                ? '#4CAF50'
-                                                : '#6343cc',
+                                        backgroundColor: mainButtonColor,
                                         justifyContent: 'center',
                                         alignItems: 'center',
                                         transform: [{ scale: buttonScale }],
-                                        shadowColor: isSuperAdmin
-                                            ? '#4CAF50'
-                                            : countdown.canCheckIn
-                                                ? '#4CAF50'
-                                                : '#6343cc',
+                                        shadowColor: mainShadowColor,
                                         shadowOpacity: 0.4,
                                         shadowRadius: 20,
                                         shadowOffset: { width: 0, height: 8 },
@@ -396,18 +432,29 @@ export function HomeScreen() {
                                                 Create
                                             </Text>
                                         </>
-                                    ) : countdown.canCheckIn ? (
+                                    ) : isLecturerLive ? (
                                         <>
-                                            <MaterialCommunityIcons name="account-check" size={32} color="#fff" />
-                                            <Text className="mt-2 font-heading text-[16px] text-white">
-                                                Clock In
+                                            <MaterialCommunityIcons
+                                                name={attendanceEnabled ? 'account-cancel' : 'account-check'}
+                                                size={32}
+                                                color="#fff"
+                                            />
+                                            <Text className="mt-2 font-heading text-[14px] text-white text-center px-2">
+                                                {attendanceEnabled ? 'Disable Attendance' : 'Allow Attendance'}
                                             </Text>
                                         </>
-                                    ) : (
+                                    ) : shouldShowDirections ? (
                                         <>
                                             <MaterialIcons name="directions" size={32} color="#fff" />
                                             <Text className="mt-2 font-heading text-[14px] text-white">
                                                 Directions
+                                            </Text>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <MaterialCommunityIcons name="account-check" size={32} color="#fff" />
+                                            <Text className="mt-2 font-heading text-[16px] text-white">
+                                                Clock In
                                             </Text>
                                         </>
                                     )}

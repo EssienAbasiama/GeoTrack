@@ -6,6 +6,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { useRole } from '../store/RoleContext';
+import { useAttendanceControl } from '../store/AttendanceControlContext';
 import { AddStudentBottomSheet, type AddStudentBottomSheetRef } from '../components/AddStudentBottomSheet';
 import { SetLocationBottomSheet, type SetLocationBottomSheetRef } from '../components/SetLocationBottomSheet';
 import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../components/LocationCheckBottomSheet';
@@ -172,6 +173,7 @@ export function ClassDetailScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const route = useRoute<RouteProp<RootStackParamList, 'ClassDetail'>>();
     const { isHOC, isSuperAdmin, isStudent, isLecturer } = useRole();
+    const { isAttendanceEnabled, setAttendanceEnabled } = useAttendanceControl();
     const { classId, classCode, className, venue, day, startTime, endTime } = route.params;
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -230,9 +232,12 @@ export function ClassDetailScreen() {
         return currentMinutes >= (startMinutes - 15) && currentMinutes <= endMinutes;
     }, [day, startTime, endTime]);
 
+    const isAttendanceOpen = isAttendanceEnabled(classCode);
+    const canStudentCheckIn = isClassActive && isAttendanceOpen && !hasCheckedIn;
+
     // Check-in pulse animation for active class
     useEffect(() => {
-        if (isStudent && isClassActive && classLocation && !hasCheckedIn) {
+        if (isStudent && canStudentCheckIn && classLocation) {
             const pulse = Animated.loop(
                 Animated.sequence([
                     Animated.timing(checkInPulse, {
@@ -252,7 +257,15 @@ export function ClassDetailScreen() {
             pulse.start();
             return () => pulse.stop();
         }
-    }, [isStudent, isClassActive, classLocation, hasCheckedIn]);
+    }, [isStudent, canStudentCheckIn, classLocation]);
+
+    const handleLecturerAttendanceToggle = () => {
+        if (!isClassActive) {
+            handleOpenDirections();
+            return;
+        }
+        setAttendanceEnabled(classCode, !isAttendanceOpen);
+    };
 
     const handleCheckInSuccess = useCallback(() => {
         setHasCheckedIn(true);
@@ -591,7 +604,7 @@ export function ClassDetailScreen() {
             {isStudent && classLocation && (
                 <Pressable
                     onPress={() => {
-                        if (isClassActive && !hasCheckedIn) {
+                        if (canStudentCheckIn) {
                             // Class is active - open location check for check-in flow
                             locationCheckRef.current?.open();
                         } else {
@@ -606,20 +619,20 @@ export function ClassDetailScreen() {
                             width: 64,
                             height: 64,
                             borderRadius: 32,
-                            backgroundColor: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
+                            backgroundColor: canStudentCheckIn ? '#4CAF50' : PRIMARY_COLOR,
                             justifyContent: 'center',
                             alignItems: 'center',
-                            shadowColor: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
+                            shadowColor: canStudentCheckIn ? '#4CAF50' : PRIMARY_COLOR,
                             shadowOpacity: 0.5,
                             shadowRadius: 16,
                             shadowOffset: { width: 0, height: 8 },
                             elevation: 10,
-                            transform: [{ scale: isClassActive && !hasCheckedIn ? checkInPulse : 1 }],
+                            transform: [{ scale: canStudentCheckIn ? checkInPulse : 1 }],
                         }}
                     >
                         {hasCheckedIn ? (
                             <Ionicons name="checkmark-circle" size={30} color="#fff" />
-                        ) : isClassActive ? (
+                        ) : canStudentCheckIn ? (
                             <MaterialCommunityIcons name="account-check" size={30} color="#fff" />
                         ) : (
                             <MaterialIcons name="directions" size={28} color="#fff" />
@@ -630,9 +643,9 @@ export function ClassDetailScreen() {
                         <Text style={{
                             fontSize: 11,
                             fontWeight: '600',
-                            color: isClassActive && !hasCheckedIn ? '#4CAF50' : PRIMARY_COLOR,
+                            color: canStudentCheckIn ? '#4CAF50' : PRIMARY_COLOR,
                         }}>
-                            {hasCheckedIn ? 'Checked In' : isClassActive ? 'Clock In' : 'Directions'}
+                            {hasCheckedIn ? 'Checked In' : canStudentCheckIn ? 'Clock In' : isClassActive ? 'Attendance Closed' : 'Directions'}
                         </Text>
                     </View>
                 </Pressable>
@@ -641,7 +654,7 @@ export function ClassDetailScreen() {
             {/* Location Direction Button for Lecturers - Lighter Shade */}
             {isLecturer && classLocation && (
                 <Pressable
-                    onPress={() => locationCheckRef.current?.open()}
+                    onPress={handleLecturerAttendanceToggle}
                     style={{ position: 'absolute', bottom: 100, right: 20 }}
                 >
                     <View
@@ -649,17 +662,29 @@ export function ClassDetailScreen() {
                             width: 60,
                             height: 60,
                             borderRadius: 30,
-                            backgroundColor: PRIMARY_LIGHT,
+                            backgroundColor: isClassActive
+                                ? (isAttendanceOpen ? '#EF4444' : '#4CAF50')
+                                : PRIMARY_LIGHT,
                             justifyContent: 'center',
                             alignItems: 'center',
-                            shadowColor: PRIMARY_LIGHT,
+                            shadowColor: isClassActive
+                                ? (isAttendanceOpen ? '#EF4444' : '#4CAF50')
+                                : PRIMARY_LIGHT,
                             shadowOpacity: 0.4,
                             shadowRadius: 12,
                             shadowOffset: { width: 0, height: 6 },
                             elevation: 8,
                         }}
                     >
-                        <MaterialIcons name="directions" size={28} color="#fff" />
+                        {isClassActive ? (
+                            <MaterialCommunityIcons
+                                name={isAttendanceOpen ? 'account-cancel' : 'account-check'}
+                                size={28}
+                                color="#fff"
+                            />
+                        ) : (
+                            <MaterialIcons name="directions" size={28} color="#fff" />
+                        )}
                     </View>
                 </Pressable>
             )}
@@ -794,6 +819,7 @@ export function ClassDetailScreen() {
                     classCode={classCode}
                     className={className}
                     isClassActive={isClassActive}
+                    isAttendanceEnabled={isAttendanceOpen}
                     studentName="Student" // TODO: Replace with actual student name from auth
                     onCheckInSuccess={handleCheckInSuccess}
                 />

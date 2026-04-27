@@ -137,6 +137,7 @@ interface LocationCheckBottomSheetProps {
     classCode: string;
     className: string;
     isClassActive?: boolean;
+    isAttendanceEnabled?: boolean;
     studentName?: string;
     onCheckInSuccess?: () => void;
 }
@@ -165,7 +166,7 @@ function deg2rad(deg: number): number {
 
 export const LocationCheckBottomSheet = forwardRef(
     (
-        { classLocation, classCode, className, isClassActive = true, studentName, onCheckInSuccess }: LocationCheckBottomSheetProps,
+        { classLocation, classCode, className, isClassActive = true, isAttendanceEnabled = true, studentName, onCheckInSuccess }: LocationCheckBottomSheetProps,
         ref: ForwardedRef<LocationCheckBottomSheetRef>
     ) => {
         const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -222,6 +223,7 @@ export const LocationCheckBottomSheet = forwardRef(
         const isPolygonMode = classLocation.polygonCoords && classLocation.polygonCoords.length >= 3;
 
         const snapPoints = useMemo(() => ['85%'], []);
+        const canProceedToCheckIn = isStudent && isClassActive && isAttendanceEnabled;
 
         // Success pulse animation
         useEffect(() => {
@@ -621,9 +623,14 @@ export const LocationCheckBottomSheet = forwardRef(
                                     <Text className="text-[13px] text-[#4CAF50] mt-1">
                                         You are within the class location ({formatDistance(distance || 0)} away)
                                     </Text>
-                                    {isStudent && isClassActive && (
+                                    {canProceedToCheckIn && (
                                         <Text className="text-[12px] text-[#2E7D32] mt-1 font-medium">
                                             Ready for check-in verification
+                                        </Text>
+                                    )}
+                                    {isStudent && isClassActive && !isAttendanceEnabled && (
+                                        <Text className="text-[12px] text-[#2E7D32] mt-1 font-medium">
+                                            Attendance is currently closed by your lecturer
                                         </Text>
                                     )}
                                 </View>
@@ -640,7 +647,7 @@ export const LocationCheckBottomSheet = forwardRef(
                                     <Text className="text-[13px] text-[#EF5350] mt-1">
                                         You are {formatDistance(distance || 0)} away from the class location
                                     </Text>
-                                    {isStudent && isClassActive && (
+                                    {canProceedToCheckIn && (
                                         <Text className="text-[12px] text-[#C62828] mt-1">
                                             Go to the class location to check in
                                         </Text>
@@ -734,7 +741,7 @@ export const LocationCheckBottomSheet = forwardRef(
                     )}
 
                     {/* Student Check-In Button - shows when inside and class is active */}
-                    {checkResult === 'inside' && isStudent && isClassActive && (
+                    {checkResult === 'inside' && canProceedToCheckIn && (
                         <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
                             <Pressable
                                 onPress={handleProceedToLiveness}
@@ -764,7 +771,7 @@ export const LocationCheckBottomSheet = forwardRef(
                     )}
 
                     {/* View Map option for students who are inside */}
-                    {checkResult === 'inside' && isStudent && isClassActive && (
+                    {checkResult === 'inside' && isStudent && (
                         <Pressable
                             onPress={openDirections}
                             className="mt-2 h-12 flex-row items-center justify-center"

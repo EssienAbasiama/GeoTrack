@@ -3,11 +3,18 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { SplashScreen } from '../screens/SplashScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
+import { AuthLandingScreen } from '../screens/auth/AuthLandingScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
+import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { VerifyEmailScreen } from '../screens/auth/VerifyEmailScreen';
+import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
+import { ResetPasswordScreen } from '../screens/auth/ResetPasswordScreen';
 import { MainTabsNavigator } from './MainTabsNavigator';
 import { CheckInScreen } from '../screens/CheckInScreen';
 import { ClassDetailScreen } from '../screens/ClassDetailScreen';
 import { NavigationScreen } from '../screens/NavigationScreen';
 import { StudentDetailScreen } from '../screens/StudentDetailScreen';
+import { useAuth } from '../store/AuthContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -31,6 +38,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * - All screens defined upfront (React Navigation requirement)
  */
 export function RootNavigator() {
+    const { isAuthenticated } = useAuth();
     /**
      * Wrapper component for Splash screen
      * This allows the splash screen to call navigation methods
@@ -45,7 +53,10 @@ export function RootNavigator() {
      * Follows the same pattern as SplashWrapper
      */
     const OnboardingWrapper = ({ navigation }: any) => (
-        <OnboardingScreen onGetStarted={() => navigation.replace('MainTabs')} />
+        <OnboardingScreen
+            onGetStarted={() => navigation.replace('AuthLanding')}
+            onUseInvite={() => navigation.replace('Register')}
+        />
     );
 
     return (
@@ -75,11 +86,60 @@ export function RootNavigator() {
                 }}
             />
             <Stack.Screen
+                name="AuthLanding"
+                component={AuthLandingScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="Login"
+                component={LoginScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="Register"
+                component={RegisterScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="VerifyEmail"
+                component={VerifyEmailScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="ForgotPassword"
+                component={ForgotPasswordScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="ResetPassword"
+                component={ResetPasswordScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
                 name="MainTabs"
                 component={MainTabsNavigator}
                 options={{
                     animationEnabled: true,
                 }}
+                listeners={({ navigation }) => ({
+                    focus: () => {
+                        if (!isAuthenticated) {
+                            navigation.replace('AuthLanding');
+                        }
+                    },
+                })}
             />
             <Stack.Screen
                 name="CheckIn"

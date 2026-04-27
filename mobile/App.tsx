@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
+import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -17,6 +18,8 @@ import {
 import './global.css';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { RoleProvider } from './src/store/RoleContext';
+import { AuthProvider } from './src/store/AuthContext';
+import { AttendanceControlProvider } from './src/store/AttendanceControlContext';
 import {
     requestNotificationPermissions,
     configureAndroidChannel,
@@ -91,18 +94,31 @@ export default function App() {
     // Don't render anything until fonts are loaded
     if (!fontsLoaded) return null;
 
+    const linking = {
+        prefixes: [Linking.createURL('/'), 'geotrack://'],
+        config: {
+            screens: {
+                Register: 'register',
+            },
+        },
+    };
+
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
                 <RoleProvider>
-                    <BottomSheetModalProvider>
-                        <View style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
-                            <NavigationContainer>
-                                <RootNavigator />
-                            </NavigationContainer>
-                            <StatusBar style="dark" />
-                        </View>
-                    </BottomSheetModalProvider>
+                    <AttendanceControlProvider>
+                        <BottomSheetModalProvider>
+                            <View style={{ flex: 1, backgroundColor: '#F5F4F8' }}>
+                                <AuthProvider>
+                                    <NavigationContainer linking={linking}>
+                                        <RootNavigator />
+                                    </NavigationContainer>
+                                </AuthProvider>
+                                <StatusBar style="dark" />
+                            </View>
+                        </BottomSheetModalProvider>
+                    </AttendanceControlProvider>
                 </RoleProvider>
             </SafeAreaProvider>
         </GestureHandlerRootView>

@@ -9,6 +9,19 @@ import { CompositeScreenProps } from '@react-navigation/native';
 export type RootStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
+  AuthLanding: undefined;
+  Login: undefined;
+  Register: {
+    inviteToken?: string;
+    inviteRole?: 'student' | 'lecturer';
+    department?: string;
+    classCode?: string;
+  } | undefined;
+  VerifyEmail: {
+    purpose: 'register' | 'password-reset';
+  };
+  ForgotPassword: undefined;
+  ResetPassword: undefined;
   MainTabs: undefined;
   CheckIn: undefined;
   ClassDetail: {
