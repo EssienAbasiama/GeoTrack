@@ -21,6 +21,8 @@ import { RoleProvider } from './src/store/RoleContext';
 import { AuthProvider } from './src/store/AuthContext';
 import { AttendanceControlProvider } from './src/store/AttendanceControlContext';
 import { navigationRef } from './src/services/apiClient';
+import Toast from 'react-native-toast-message';
+import toastConfig from './src/components/toastConfig';
 import {
     requestNotificationPermissions,
     configureAndroidChannel,
@@ -122,6 +124,7 @@ export default function App() {
                     </AttendanceControlProvider>
                 </RoleProvider>
             </SafeAreaProvider>
+            <Toast config={toastConfig} />
         </GestureHandlerRootView>
     );
 }

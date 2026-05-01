@@ -8,10 +8,12 @@ import type { RootStackParamList } from '../types/navigation';
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 // ─── Base URL (update for production deployment) ─────────────────────────────
+// For physical iOS/Android devices, use your machine's local network IP.
+// Run: php artisan serve --host=0.0.0.0 --port=8000
 const DEV_BASE_URL =
     Platform.OS === 'android'
-        ? 'http://10.0.2.2:8000/api'  // Android emulator → host machine
-        : 'http://localhost:8000/api'; // iOS simulator / web
+        ? 'http://10.0.2.2:8000/api'      // Android emulator → host machine
+        : 'http://172.20.10.2:8000/api';  // iOS device / simulator on local network
 
 export const BASE_URL = __DEV__ ? DEV_BASE_URL : 'https://api.geotrack.edu/api';
 

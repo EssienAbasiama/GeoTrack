@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -39,13 +40,12 @@ export function ResetPasswordScreen({ navigation }: Props) {
 
         const result = await resetPassword(form.values.code, form.values.password);
         if (!result.ok) {
-            form.setError('code', result.message ?? 'Invalid code. Please try again.');
+            Toast.show({ type: 'error', text1: result.message ?? 'Invalid code. Please try again.', position: "bottom" });
             return;
         }
 
-        Alert.alert('Password reset', 'Your password has been changed.', [
-            { text: 'OK', onPress: () => navigation.replace('Login') },
-        ]);
+        Toast.show({ type: 'success', text1: 'Your password has been changed.', position: "bottom" });
+        navigation.replace('Login');
     };
 
     return (

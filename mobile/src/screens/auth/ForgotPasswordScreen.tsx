@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../store/AuthContext';
 import { ValidatedInput } from '../../components/ValidatedInput';
 import useFormValidation, { validators } from '../../hooks/useFormValidation';
+import Toast from 'react-native-toast-message';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
@@ -22,7 +23,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
 
         const result = await requestPasswordReset(form.values.email);
         if (!result.ok) {
-            form.setError('email', result.message ?? 'Unable to send code. Please try again.');
+            Toast.show({ type: 'error', text1: result.message ?? 'Unable to send code. Please try again.', position: "bottom" });
             return;
         }
         navigation.navigate('VerifyEmail', { purpose: 'password-reset' });

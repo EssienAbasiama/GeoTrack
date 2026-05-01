@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../store/AuthContext';
 import { ValidatedInput } from '../../components/ValidatedInput';
 import useFormValidation, { validators } from '../../hooks/useFormValidation';
+import Toast from 'react-native-toast-message';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
 
@@ -60,7 +61,7 @@ export function RegisterScreen({ navigation, route }: Props) {
         });
 
         if (!result.ok) {
-            form.setError('email', result.message ?? 'Registration failed. Please try again.');
+            Toast.show({ type: 'error', text1: result.message ?? 'Registration failed. Please try again.', position: "bottom" });
             return;
         }
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -30,7 +31,7 @@ export function VerifyEmailScreen({ navigation, route }: Props) {
     const handleVerify = async () => {
         const result = await verifyRegistrationEmail(code);
         if (!result.ok) {
-            Alert.alert('Verification failed', result.message || 'Invalid code.');
+            Toast.show({ type: 'error', text1: result.message || 'Invalid code.', position: "bottom" });
             return;
         }
 

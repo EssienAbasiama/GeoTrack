@@ -16,6 +16,7 @@ import {
     Alert,
     Dimensions,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     BottomSheetModal,
@@ -163,11 +164,11 @@ export const SetPolygonLocationBottomSheet = forwardRef<SetPolygonLocationBottom
 
         const handleSave = () => {
             if (!locationName.trim()) {
-                Alert.alert('Error', 'Please enter a location name');
+                Toast.show({ type: 'error', text1: 'Please enter a location name', position: "bottom" });
                 return;
             }
             if (polygonCoords.length < 3) {
-                Alert.alert('Error', 'Please draw at least 3 points to create a boundary');
+                Toast.show({ type: 'error', text1: 'Please draw at least 3 points to create a boundary', position: "bottom" });
                 return;
             }
 

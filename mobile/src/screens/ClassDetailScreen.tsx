@@ -1,6 +1,7 @@
 import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image, Alert } from 'react-native';
+import { Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -276,11 +277,7 @@ export function ClassDetailScreen() {
         // Send notification
         notifyCheckInSuccess(classCode, className);
 
-        Alert.alert(
-            '🎉 Check-In Successful!',
-            'Your attendance has been recorded for this class session.',
-            [{ text: 'OK' }]
-        );
+        Toast.show({ type: 'success', text1: 'Your attendance has been recorded for this class session.', position: "bottom" });
     }, [classCode, className]);
 
     const handleOpenDirections = () => {

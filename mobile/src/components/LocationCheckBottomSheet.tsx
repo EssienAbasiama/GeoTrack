@@ -15,11 +15,11 @@ import {
     View,
     StyleSheet,
     ActivityIndicator,
-    Alert,
     Dimensions,
     Animated,
     Easing,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -397,7 +397,7 @@ export const LocationCheckBottomSheet = forwardRef(
                     );
                 }
             } catch (error) {
-                Alert.alert('Error', 'Failed to get your location. Please try again.');
+                Toast.show({ type: 'error', text1: 'Failed to get your location. Please try again.' });
                 setCheckResult(null);
             } finally {
                 setIsChecking(false);

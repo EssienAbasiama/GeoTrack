@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../store/AuthContext';
 import { ValidatedInput } from '../../components/ValidatedInput';
 import useFormValidation, { validators } from '../../hooks/useFormValidation';
+import Toast from 'react-native-toast-message';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -25,8 +26,7 @@ export function LoginScreen({ navigation }: Props) {
 
         const result = await signIn(form.values.email, form.values.password);
         if (!result.ok) {
-            // Surface server error inline on the email field so the user sees it
-            form.setError('email', result.message ?? 'Sign in failed. Please try again.');
+            Toast.show({ type: 'error', text1: result.message ?? 'Sign in failed. Please try again.', position: "bottom" });
         }
     };
 

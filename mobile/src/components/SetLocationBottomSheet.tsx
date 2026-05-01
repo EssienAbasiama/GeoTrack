@@ -14,9 +14,9 @@ import {
     View,
     StyleSheet,
     ActivityIndicator,
-    Alert,
     Platform,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     BottomSheetModal,
@@ -94,7 +94,7 @@ export const SetLocationBottomSheet = forwardRef<SetLocationBottomSheetRef, SetL
                     longitude: location.coords.longitude,
                 });
             } catch (error) {
-                Alert.alert('Error', 'Failed to get current location. Please try again.');
+                Toast.show({ type: 'error', text1: 'Failed to get current location. Please try again.', position: "bottom" });
             } finally {
                 setIsFetchingLocation(false);
             }
@@ -102,11 +102,11 @@ export const SetLocationBottomSheet = forwardRef<SetLocationBottomSheetRef, SetL
 
         const handleSave = () => {
             if (!locationName.trim()) {
-                Alert.alert('Error', 'Please enter a location name');
+                Toast.show({ type: 'error', text1: 'Please enter a location name', position: "bottom" });
                 return;
             }
             if (!currentLocation) {
-                Alert.alert('Error', 'Please capture your current location first');
+                Toast.show({ type: 'error', text1: 'Please capture your current location first', position: "bottom" });
                 return;
             }
 
@@ -254,8 +254,8 @@ export const SetLocationBottomSheet = forwardRef<SetLocationBottomSheetRef, SetL
                                     key={r}
                                     onPress={() => setRadius(r)}
                                     className={`flex-1 h-11 items-center justify-center rounded-[12px] border ${radius === r
-                                            ? 'bg-[#6343cc] border-[#6343cc]'
-                                            : 'bg-white border-[#E8EAF1]'
+                                        ? 'bg-[#6343cc] border-[#6343cc]'
+                                        : 'bg-white border-[#E8EAF1]'
                                         }`}
                                 >
                                     <Text
@@ -277,8 +277,8 @@ export const SetLocationBottomSheet = forwardRef<SetLocationBottomSheetRef, SetL
                         onPress={handleSave}
                         disabled={isLoading || !currentLocation || !locationName.trim()}
                         className={`h-14 items-center justify-center rounded-[14px] ${currentLocation && locationName.trim()
-                                ? 'bg-[#6343cc]'
-                                : 'bg-[#E8EAF1]'
+                            ? 'bg-[#6343cc]'
+                            : 'bg-[#E8EAF1]'
                             }`}
                     >
                         {isLoading ? (
@@ -286,8 +286,8 @@ export const SetLocationBottomSheet = forwardRef<SetLocationBottomSheetRef, SetL
                         ) : (
                             <Text
                                 className={`font-medium text-[16px] ${currentLocation && locationName.trim()
-                                        ? 'text-white'
-                                        : 'text-[#B8BBC6]'
+                                    ? 'text-white'
+                                    : 'text-[#B8BBC6]'
                                     }`}
                             >
                                 Save Location
