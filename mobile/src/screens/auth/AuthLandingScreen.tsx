@@ -12,15 +12,15 @@ export function AuthLandingScreen({ navigation }: Props) {
         <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9] px-6 pt-6">
             <View className="flex-1">
                 <View className="rounded-3xl bg-white p-6 shadow-sm shadow-black/5">
-                    <Text className="font-heading text-[30px] text-[#181A20]">GeoTrack Access</Text>
-                    <Text className="mt-3 text-[14px] leading-6 text-[#6B7280]">
+                    <Text className=" font-heading text-[30px] text-[#181A20]">GeoTrack Access</Text>
+                    <Text className="mt-3 text-[14px] leading-6 text-[#6B7280] font-light">
                         Register through invite link or QR code from your Dean, HOD, Lecturer, or Class admin.
                     </Text>
                 </View>
 
                 <View className="mt-6 rounded-2xl bg-[#EEF0FF] p-5">
                     <Text className="font-medium text-[15px] text-[#3B3F4C]">Access Structure</Text>
-                    <Text className="mt-2 text-[13px] leading-6 text-[#5B6070]">
+                    <Text className="mt-2 text-[13px] leading-6 text-[#5B6070] font-light">
                         Dean adds HODs. HODs add Lecturers. Lecturers add HOCs. Students join classes via invite.
                     </Text>
                 </View>
@@ -44,7 +44,7 @@ export function AuthLandingScreen({ navigation }: Props) {
                 </View>
 
                 <View className="mt-8 rounded-2xl border border-dashed border-[#CBD5E1] bg-white p-4">
-                    <Text className="text-[13px] text-[#64748B]">Tip: open invite links directly to pre-fill registration. QR invite maps to the same flow.</Text>
+                    <Text className="text-[13px] text-[#64748B] font-normal">Tip: open invite links directly to pre-fill registration. QR invite maps to the same flow.</Text>
                 </View>
             </View>
         </SafeAreaView>

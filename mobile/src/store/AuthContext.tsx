@@ -54,7 +54,7 @@ interface AuthContextType {
     isInitialising: boolean;
     pendingRegistration: PendingRegistration | null;
     pendingEmail: string | null;
-    signIn: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
+    signIn: (email: string, password: string) => Promise<{ ok: boolean; unverified?: boolean; message?: string }>;
     signOut: () => Promise<void>;
     startRegistration: (data: PendingRegistration) => Promise<{ ok: boolean; message?: string }>;
     verifyRegistrationEmail: (code: string) => Promise<{ ok: boolean; message?: string }>;
@@ -82,12 +82,20 @@ const apiUserToAuthUser = (u: ApiUser, invite?: InviteMeta): AuthUser => ({
 /** Extract a human-readable error message from any thrown value. */
 const extractError = (err: unknown, fallback = 'Something went wrong. Please try again.'): string => {
     if (axios.isAxiosError(err)) {
-        return (
-            err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            fallback
-        );
+        // Server responded with an error body
+        if (err.response) {
+            return (
+                err.response.data?.message ||
+                err.response.data?.error ||
+                fallback
+            );
+        }
+        // No response — network unreachable or timeout
+        const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '');
+        if (isTimeout) {
+            return 'Request timed out. Check that the server is running and your device is on the same network.';
+        }
+        return 'Could not reach the server. Check your internet connection and try again.';
     }
     if (err instanceof Error) return err.message;
     return fallback;
@@ -147,7 +155,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setRole(nextUser.role as UserRole);
             return { ok: true };
         } catch (err) {
-            return { ok: false, message: extractError(err) };
+            if (axios.isAxiosError(err) && err.response?.status === 403) {
+                setPendingEmail(email.trim());
+                return { ok: false, unverified: true, message: extractError(err) };
+            }
+            return { ok: false, unverified: false, message: extractError(err) };
         } finally {
             setAuthLoading(false);
         }

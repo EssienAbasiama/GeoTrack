@@ -9,7 +9,7 @@ import type { RootStackParamList } from '../types/navigation';
 import { useRole } from '../store/RoleContext';
 import { useAttendanceControl } from '../store/AttendanceControlContext';
 import { AddStudentBottomSheet, type AddStudentBottomSheetRef } from '../components/AddStudentBottomSheet';
-import { SetLocationBottomSheet, type SetLocationBottomSheetRef } from '../components/SetLocationBottomSheet';
+import { SetBoundaryBottomSheet, type SetBoundaryBottomSheetRef, type ClassBoundary } from '../components/SetBoundaryBottomSheet';
 import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../components/LocationCheckBottomSheet';
 import { celebrationPattern } from '../utils/haptics';
 import { notifyCheckInSuccess } from '../services/notifications';
@@ -181,7 +181,7 @@ export function ClassDetailScreen() {
     const fabBounce = useRef(new Animated.Value(1)).current;
     const locationFabBounce = useRef(new Animated.Value(1)).current;
     const addStudentRef = useRef<AddStudentBottomSheetRef>(null);
-    const setLocationRef = useRef<SetLocationBottomSheetRef>(null);
+    const setLocationRef = useRef<SetBoundaryBottomSheetRef>(null);
     const locationCheckRef = useRef<LocationCheckBottomSheetRef>(null);
     const searchInputRef = useRef<TextInput>(null);
 
@@ -194,12 +194,7 @@ export function ClassDetailScreen() {
     const fabRotate = useRef(new Animated.Value(0)).current;
 
     // Mock class location (in production, this would come from the backend)
-    const [classLocation, setClassLocation] = useState<{
-        latitude: number;
-        longitude: number;
-        radius: number;
-        name: string;
-    } | null>({
+    const [classLocation, setClassLocation] = useState<ClassBoundary | null>({
         // Default mock location - FUNAAB (Federal University of Agriculture, Abeokuta)
         latitude: 7.2266,
         longitude: 3.4400,
@@ -389,7 +384,7 @@ export function ClassDetailScreen() {
         setStudents((prev) => [...prev, newStudent]);
     };
 
-    const handleSaveLocation = (location: { latitude: number; longitude: number; radius: number; name: string }) => {
+    const handleSaveLocation = (location: ClassBoundary) => {
         setClassLocation(location);
     };
 
@@ -801,7 +796,7 @@ export function ClassDetailScreen() {
             />
 
             {isHOC && (
-                <SetLocationBottomSheet
+                <SetBoundaryBottomSheet
                     ref={setLocationRef}
                     classCode={classCode}
                     onSaveLocation={handleSaveLocation}

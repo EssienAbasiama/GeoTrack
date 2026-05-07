@@ -36,23 +36,22 @@ class AuthController extends Controller
 
         try {
             $user = DB::transaction(function () use ($validated) {
-                $user = User::query()->create([
+                return User::query()->create([
                     'name' => $validated['name'],
                     'email' => Str::lower($validated['email']),
                     'password' => $validated['password'],
                     'role' => $validated['role'],
                     'matric_no' => $validated['role'] === 'student' ? $validated['matric_no'] : null,
                 ]);
-
-                $this->issueAndSendCode(
-                    $user->email,
-                    'email_verification',
-                    (int) config('auth_api.verification_code_ttl_minutes', 10)
-                );
-
-                return $user;
             });
+
+            $this->issueAndSendCode(
+                $user->email,
+                'email_verification',
+                (int) config('auth_api.verification_code_ttl_minutes', 10)
+            );
         } catch (Throwable $e) {
+            report($e);
             return response()->json([
                 'message' => 'Unable to complete registration right now. Please try again.',
             ], 500);

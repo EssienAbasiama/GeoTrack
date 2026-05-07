@@ -96,7 +96,7 @@ export function ValidatedInput({
     return (
         <View className={containerClassName}>
             {label ? (
-                <Text className="mb-2 text-[13px] text-[#4B5563]">{label}</Text>
+                <Text className="mb-2 text-[13px] text-[#4B5563] font-medium" style={{ fontFamily: 'WorkSans_500Medium' }}>{label}</Text>
             ) : null}
 
             <AnimatedView style={animatedStyle}>
@@ -128,6 +128,7 @@ export function ValidatedInput({
                                 flex: 1,
                                 fontSize: 15,
                                 color: '#111827',
+                                fontFamily: 'WorkSans_400Regular',
                                 padding: 0, // override RN default vertical padding on Android
                             },
                             style,

@@ -72,7 +72,7 @@ export function RegisterScreen({ navigation, route }: Props) {
         <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9]">
             <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40 }}>
                 <Text className="font-heading text-[30px] text-[#181A20]">Create Account</Text>
-                <Text className="mt-2 text-[14px] text-[#6B7280]">Use your invite details to join as Lecturer/HOD or Student.</Text>
+                <Text className="font-sans mt-2 text-[14px] text-[#6B7280]">Use your invite details to join as Lecturer/HOD or Student.</Text>
 
                 <View className="mt-6 flex-row rounded-xl bg-[#EEF2FF] p-1">
                     <Pressable
@@ -82,7 +82,7 @@ export function RegisterScreen({ navigation, route }: Props) {
                         className="h-11 flex-1 items-center justify-center rounded-lg"
                         style={{ backgroundColor: role === 'lecturer' ? '#4F46E5' : 'transparent' }}
                     >
-                        <Text className="font-medium" style={{ color: role === 'lecturer' ? '#fff' : '#374151' }}>Lecturer Portal</Text>
+                        <Text className="font-medium" style={{ color: role === 'lecturer' ? '#fff' : '#374151', fontFamily: 'WorkSans_500Medium' }}>Lecturer Portal</Text>
                     </Pressable>
                     <Pressable
                         onPress={() => {
@@ -91,12 +91,12 @@ export function RegisterScreen({ navigation, route }: Props) {
                         className="h-11 flex-1 items-center justify-center rounded-lg"
                         style={{ backgroundColor: role === 'student' ? '#4F46E5' : 'transparent' }}
                     >
-                        <Text className="font-medium" style={{ color: role === 'student' ? '#fff' : '#374151' }}>Student Portal</Text>
+                        <Text className="font-medium" style={{ color: role === 'student' ? '#fff' : '#374151', fontFamily: 'WorkSans_500Medium' }}>Student Portal</Text>
                     </Pressable>
                 </View>
 
                 {roleLockedByInvite ? (
-                    <Text className="mt-2 text-[12px] text-[#64748B]">
+                    <Text className="font-sans mt-2 text-[12px] text-[#64748B]">
                         Invite-enforced role: {route.params?.inviteRole === 'lecturer' ? 'Lecturer Portal (used for HOD/Lecturer onboarding)' : 'Student Portal'}
                     </Text>
                 ) : null}
@@ -154,7 +154,7 @@ export function RegisterScreen({ navigation, route }: Props) {
                     />
 
                     <View className="rounded-xl bg-[#F8FAFC] p-3">
-                        <Text className="text-[12px] text-[#64748B]">Invite token: {inviteToken || 'Not provided (you can still continue for demo flow)'}</Text>
+                        <Text className="font-sans text-[12px] text-[#64748B]">Invite token: {inviteToken || 'Not provided (you can still continue for demo flow)'}</Text>
                     </View>
                 </View>
 
@@ -164,13 +164,13 @@ export function RegisterScreen({ navigation, route }: Props) {
                     className="mt-8 h-14 items-center justify-center rounded-2xl bg-[#4F46E5]"
                     style={{ opacity: authLoading ? 0.7 : 1 }}
                 >
-                    <Text className="font-medium text-[16px] text-white">{authLoading ? 'Please wait...' : 'Continue'}</Text>
+                    <Text className="font-medium text-[16px] text-white" style={{ fontFamily: 'WorkSans_500Medium' }}>{authLoading ? 'Please wait...' : 'Continue'}</Text>
                 </Pressable>
 
                 <View className="mt-6 flex-row items-center justify-center">
-                    <Text className="text-[13px] text-[#6B7280]">Already registered?</Text>
+                    <Text className="font-sans text-[13px] text-[#6B7280]">Already registered?</Text>
                     <Pressable onPress={() => navigation.navigate('Login')}>
-                        <Text className="ml-1 text-[13px] font-semibold text-[#4F46E5]">Sign in</Text>
+                        <Text className="font-heading ml-1 text-[13px] text-[#4F46E5]">Sign in</Text>
                     </Pressable>
                 </View>
             </ScrollView>

@@ -25,7 +25,11 @@ export function LoginScreen({ navigation }: Props) {
         if (!valid) return;
 
         const result = await signIn(form.values.email, form.values.password);
-        if (!result.ok) {
+        if (result.ok) {
+            navigation.replace('MainTabs');
+        } else if (result.unverified) {
+            navigation.navigate('VerifyEmail', { purpose: 'register' });
+        } else {
             Toast.show({ type: 'error', text1: result.message ?? 'Sign in failed. Please try again.', position: "bottom" });
         }
     };
