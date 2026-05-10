@@ -15,6 +15,7 @@ import {
     StyleSheet,
     Text,
     View,
+    useWindowDimensions,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -96,6 +97,9 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         const bsRef = useRef<BottomSheetModal>(null);
         const mapRef = useRef<MapView>(null);
         const insets = useSafeAreaInsets();
+        const { height: WINDOW_H } = useWindowDimensions();
+        // Explicit map height: 96% sheet - handle (~28px) - bottom panel (~142px) - safe area bottom
+        const mapAreaHeight = WINDOW_H * 0.96 - 28 - 142 - Math.max(insets.bottom, 16);
         const pulseAnim = useRef(new Animated.Value(1)).current;
         const walkSubRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -161,23 +165,19 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         useImperativeHandle(ref, () => ({
             open: () => {
                 resetAll();
+                // Pre-populate fields from existing location but always show the picker
+                // so the user can choose between Geofence Radius and Perimeter Walk
                 if (existingLocation) {
                     setLocationName(existingLocation.name || '');
                     if (existingLocation.polygonCoords?.length) {
                         setWalkCoords(existingLocation.polygonCoords);
-                        setPage('manual');
-                        bsRef.current?.present();
-                        setTimeout(() => bsRef.current?.snapToIndex(1), 100);
                     } else {
                         setCircleCenter({ latitude: existingLocation.latitude, longitude: existingLocation.longitude });
                         setRadius(existingLocation.radius ?? 50);
-                        setPage('geofence');
-                        bsRef.current?.present();
                     }
-                } else {
-                    setPage('picker');
-                    bsRef.current?.present();
                 }
+                setPage('picker');
+                bsRef.current?.present();
                 fetchCurrentLocation();
             },
             close: () => bsRef.current?.dismiss(),
@@ -295,6 +295,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                 {/* ═══════════════════ PICKER ═══════════════════ */}
                 {page === 'picker' && (
                     <BottomSheetScrollView contentContainerStyle={styles.scrollContent}>
+                        {/* Header */}
                         <View style={styles.row}>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.title}>Set Class Location</Text>
@@ -305,50 +306,87 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                             </Pressable>
                         </View>
 
-                        <View style={styles.infoBanner}>
-                            <View style={styles.infoIcon}>
-                                <Ionicons name="information" size={18} color="#FF8F00" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.infoTitle}>Choose a boundary method</Text>
-                                <Text style={styles.infoText}>
-                                    The boundary defines where students must physically be to record attendance.
-                                </Text>
-                            </View>
-                        </View>
+                        {/* Subtitle prompt */}
+                        <Text style={styles.pickerPrompt}>
+                            Choose how you want to define the attendance boundary for this class.
+                        </Text>
 
+                        {/* ── Geofence Radius Card ── */}
                         <Pressable
                             onPress={() => setPage('geofence')}
-                            style={({ pressed }) => [styles.optionCard, pressed && styles.optionCardPressed]}
+                            style={({ pressed }) => [styles.bigCard, pressed && styles.bigCardPressed]}
                         >
-                            <View style={[styles.optionIcon, { backgroundColor: '#EEF2FF' }]}>
-                                <Ionicons name="radio-button-on" size={28} color={PRIMARY} />
+                            {/* Coloured header band */}
+                            <View style={[styles.bigCardBand, { backgroundColor: '#EEF2FF' }]}>
+                                <View style={styles.bigCardIconWrap}>
+                                    <Ionicons name="radio-button-on" size={36} color={PRIMARY} />
+                                </View>
+                                <View style={styles.bigCardBadge}>
+                                    <Text style={styles.bigCardBadgeText}>Quick Setup</Text>
+                                </View>
                             </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.optionTitle}>Geofence Radius</Text>
-                                <Text style={styles.optionDesc}>
-                                    Stand at the class location, capture your GPS pin, and set a fixed radius.
-                                    Quick and ideal for standard classrooms.
+
+                            {/* Body */}
+                            <View style={styles.bigCardBody}>
+                                <Text style={styles.bigCardTitle}>Geofence Radius</Text>
+                                <Text style={styles.bigCardDesc}>
+                                    Stand at the class location, capture your GPS pin, then choose a fixed radius.
+                                    Perfect for standard classrooms and lecture halls.
                                 </Text>
+                                <View style={styles.bigCardTags}>
+                                    <View style={[styles.bigCardTag, { backgroundColor: '#EEF2FF' }]}>
+                                        <Ionicons name="flash" size={11} color={PRIMARY} />
+                                        <Text style={[styles.bigCardTagText, { color: PRIMARY }]}>Fast</Text>
+                                    </View>
+                                    <View style={[styles.bigCardTag, { backgroundColor: '#EEF2FF' }]}>
+                                        <Ionicons name="school" size={11} color={PRIMARY} />
+                                        <Text style={[styles.bigCardTagText, { color: PRIMARY }]}>Classrooms</Text>
+                                    </View>
+                                </View>
                             </View>
-                            <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+
+                            <View style={styles.bigCardArrow}>
+                                <Ionicons name="arrow-forward" size={18} color={PRIMARY} />
+                            </View>
                         </Pressable>
 
+                        {/* ── Perimeter Walk Card ── */}
                         <Pressable
                             onPress={goToManual}
-                            style={({ pressed }) => [styles.optionCard, pressed && styles.optionCardPressed]}
+                            style={({ pressed }) => [styles.bigCard, pressed && styles.bigCardPressed]}
                         >
-                            <View style={[styles.optionIcon, { backgroundColor: '#F0FDF4' }]}>
-                                <MaterialIcons name="directions-walk" size={28} color={SUCCESS} />
+                            {/* Coloured header band */}
+                            <View style={[styles.bigCardBand, { backgroundColor: '#F0FDF4' }]}>
+                                <View style={styles.bigCardIconWrap}>
+                                    <MaterialIcons name="directions-walk" size={36} color={SUCCESS} />
+                                </View>
+                                <View style={[styles.bigCardBadge, { backgroundColor: '#DCFCE7' }]}>
+                                    <Text style={[styles.bigCardBadgeText, { color: '#166534' }]}>Recommended</Text>
+                                </View>
                             </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.optionTitle}>Perimeter Walk</Text>
-                                <Text style={styles.optionDesc}>
-                                    Physically walk the boundary of your venue — GPS traces your path
-                                    automatically. Best for labs, open fields, and irregular spaces.
+
+                            {/* Body */}
+                            <View style={styles.bigCardBody}>
+                                <Text style={styles.bigCardTitle}>Perimeter Walk</Text>
+                                <Text style={styles.bigCardDesc}>
+                                    Walk the boundary of your venue while GPS traces your path automatically.
+                                    Ideal for labs, open fields, and irregular spaces.
                                 </Text>
+                                <View style={styles.bigCardTags}>
+                                    <View style={[styles.bigCardTag, { backgroundColor: '#F0FDF4' }]}>
+                                        <MaterialIcons name="precision-manufacturing" size={11} color={SUCCESS} />
+                                        <Text style={[styles.bigCardTagText, { color: '#166534' }]}>Precise</Text>
+                                    </View>
+                                    <View style={[styles.bigCardTag, { backgroundColor: '#F0FDF4' }]}>
+                                        <MaterialIcons name="terrain" size={11} color={SUCCESS} />
+                                        <Text style={[styles.bigCardTagText, { color: '#166534' }]}>Any Shape</Text>
+                                    </View>
+                                </View>
                             </View>
-                            <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+
+                            <View style={[styles.bigCardArrow, { backgroundColor: '#F0FDF4' }]}>
+                                <Ionicons name="arrow-forward" size={18} color={SUCCESS} />
+                            </View>
                         </Pressable>
                     </BottomSheetScrollView>
                 )}
@@ -471,7 +509,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                 {/* ═══════════════ PERIMETER WALK MAP ═══════════════ */}
                 {page === 'manual' && (
                     <BottomSheetView style={styles.mapShell}>
-                        <View style={styles.mapArea}>
+                        <View style={[styles.mapArea, { height: mapAreaHeight }]}>
                             <MapView
                                 ref={mapRef}
                                 style={StyleSheet.absoluteFill}
@@ -628,6 +666,22 @@ const styles = StyleSheet.create({
     optionIcon: { width: 54, height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     optionTitle: { fontFamily: 'WorkSans_600SemiBold', fontSize: 15, color: '#181A20', marginBottom: 4 },
     optionDesc: { fontFamily: 'WorkSans_400Regular', fontSize: 12, color: '#8F94A4', lineHeight: 18 },
+
+    pickerPrompt: { fontFamily: 'WorkSans_400Regular', fontSize: 13, color: '#8F94A4', lineHeight: 20, marginBottom: 20, marginTop: -8 },
+
+    bigCard: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E8EAF1', borderRadius: 20, marginBottom: 14, overflow: 'hidden' },
+    bigCardPressed: { borderColor: PRIMARY, backgroundColor: '#FAFAFE' },
+    bigCardBand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
+    bigCardIconWrap: { width: 56, height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center' },
+    bigCardBadge: { backgroundColor: '#E0E7FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    bigCardBadgeText: { fontFamily: 'WorkSans_600SemiBold', fontSize: 11, color: PRIMARY, letterSpacing: 0.3 },
+    bigCardBody: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 16 },
+    bigCardTitle: { fontFamily: 'WorkSans_700Bold', fontSize: 17, color: '#181A20', marginBottom: 6 },
+    bigCardDesc: { fontFamily: 'WorkSans_400Regular', fontSize: 13, color: '#5A5D6B', lineHeight: 20, marginBottom: 12 },
+    bigCardTags: { flexDirection: 'row', gap: 8 },
+    bigCardTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+    bigCardTagText: { fontFamily: 'WorkSans_500Medium', fontSize: 11 },
+    bigCardArrow: { position: 'absolute', bottom: 16, right: 16, width: 32, height: 32, borderRadius: 16, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center' },
 
     label: { fontFamily: 'WorkSans_500Medium', fontSize: 13, color: '#5A5D6B', marginBottom: 8 },
     inputWrap: { flexDirection: 'row', alignItems: 'center', height: 52, borderRadius: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E8EAF1', paddingHorizontal: 14, gap: 10 },
