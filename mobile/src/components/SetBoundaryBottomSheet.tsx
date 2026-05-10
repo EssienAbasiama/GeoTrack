@@ -43,7 +43,7 @@ const DANGER = '#EF5350';
 const BG = '#F6F6F9';
 
 const RADIUS_OPTIONS = [30, 50, 100, 150, 200];
-const WALK_MIN_DISTANCE_M = 5;
+const WALK_MIN_DISTANCE_M = 1; // 1 m — tiny areas need dense points
 
 type Page = 'picker' | 'geofence' | 'manual';
 
@@ -117,6 +117,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         const [radius, setRadius] = useState(50);
 
         const [walkCoords, setWalkCoords] = useState<BoundaryCoordinate[]>([]);
+        const [livePos, setLivePos] = useState<BoundaryCoordinate | null>(null);
         const [isWalking, setIsWalking] = useState(false);
         const [totalWalkDistance, setTotalWalkDistance] = useState(0);
         const lastWalkPoint = useRef<BoundaryCoordinate | null>(null);
@@ -144,6 +145,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
             setCircleCenter(null);
             setRadius(50);
             setWalkCoords([]);
+            setLivePos(null);
             setIsWalking(false);
             setTotalWalkDistance(0);
             lastWalkPoint.current = null;
@@ -206,15 +208,34 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
             if (!ok) return;
             lastWalkPoint.current = null;
             const sub = await Location.watchPositionAsync(
-                { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: WALK_MIN_DISTANCE_M, timeInterval: 2000 },
+                {
+                    accuracy: Location.Accuracy.BestForNavigation,
+                    timeInterval: 400,      // update every 400 ms for a live line feel
+                    distanceInterval: 0,    // no distance gate — we gate manually below
+                },
                 (loc) => {
                     const pt: BoundaryCoordinate = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-                    setWalkCoords(prev => [...prev, pt]);
-                    if (lastWalkPoint.current) {
-                        setTotalWalkDistance(prev => prev + haversine(lastWalkPoint.current!, pt));
+
+                    // Always update live position so the line tip follows the user in real-time
+                    setLivePos(pt);
+
+                    // Only record a boundary point when moved at least WALK_MIN_DISTANCE_M
+                    const distFromLast = lastWalkPoint.current ? haversine(lastWalkPoint.current, pt) : Infinity;
+                    if (distFromLast >= WALK_MIN_DISTANCE_M) {
+                        setWalkCoords(prev => [...prev, pt]);
+                        if (lastWalkPoint.current) {
+                            setTotalWalkDistance(prev => prev + distFromLast);
+                        }
+                        lastWalkPoint.current = pt;
                     }
-                    lastWalkPoint.current = pt;
-                    mapRef.current?.animateToRegion({ latitude: loc.coords.latitude, longitude: loc.coords.longitude, latitudeDelta: 0.001, longitudeDelta: 0.001 }, 300);
+
+                    // Keep map tightly zoomed in on the user (~30 m view) while walking
+                    mapRef.current?.animateToRegion({
+                        latitude: loc.coords.latitude,
+                        longitude: loc.coords.longitude,
+                        latitudeDelta: 0.0003,
+                        longitudeDelta: 0.0003,
+                    }, 200);
                 },
             );
             walkSubRef.current = sub;
@@ -519,20 +540,47 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                 showsMyLocationButton={false}
                                 mapType="satellite"
                             >
-                                {walkCoords.map((coord, i) => (
-                                    <Marker key={`w-${i}`} coordinate={coord} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
-                                        <View style={[styles.walkDot, i === 0 && styles.walkDotFirst]} />
+                                {/* First recorded point marker */}
+                                {walkCoords.length > 0 && (
+                                    <Marker
+                                        key="start"
+                                        coordinate={walkCoords[0]}
+                                        anchor={{ x: 0.5, y: 0.5 }}
+                                        tracksViewChanges={false}
+                                    >
+                                        <View style={styles.walkDotFirst} />
                                     </Marker>
-                                ))}
-                                {walkCoords.length >= 2 && (
-                                    <Polyline coordinates={walkCoords} strokeColor="rgba(99,67,204,0.9)" strokeWidth={3} />
                                 )}
+
+                                {/* Path walked so far + live tip extending to current position */}
+                                {(walkCoords.length >= 1 || livePos) && (
+                                    <>
+                                        {/* Glow / shadow line behind the main line */}
+                                        <Polyline
+                                            coordinates={livePos ? [...walkCoords, livePos] : walkCoords}
+                                            strokeColor="rgba(255,255,255,0.35)"
+                                            strokeWidth={7}
+                                            lineCap="round"
+                                            lineJoin="round"
+                                        />
+                                        {/* Main path line */}
+                                        <Polyline
+                                            coordinates={livePos ? [...walkCoords, livePos] : walkCoords}
+                                            strokeColor="rgba(99,67,204,1)"
+                                            strokeWidth={4}
+                                            lineCap="round"
+                                            lineJoin="round"
+                                        />
+                                    </>
+                                )}
+
+                                {/* Closing line back to start once ≥3 points */}
                                 {walkCoords.length >= 3 && (
                                     <Polygon
                                         coordinates={walkCoords}
                                         fillColor="rgba(99,67,204,0.18)"
-                                        strokeColor="rgba(99,67,204,0.9)"
-                                        strokeWidth={2.5}
+                                        strokeColor="transparent"
+                                        strokeWidth={0}
                                     />
                                 )}
                             </MapView>
@@ -593,7 +641,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                 )}
                                 <View style={styles.walkIconGroup}>
                                     <Pressable
-                                        onPress={() => { stopWalking(); setWalkCoords([]); setTotalWalkDistance(0); lastWalkPoint.current = null; }}
+                                        onPress={() => { stopWalking(); setWalkCoords([]); setLivePos(null); setTotalWalkDistance(0); lastWalkPoint.current = null; }}
                                         disabled={walkCoords.length === 0}
                                         style={[styles.mapIconBtn, walkCoords.length === 0 && styles.mapIconBtnOff]}
                                     >
