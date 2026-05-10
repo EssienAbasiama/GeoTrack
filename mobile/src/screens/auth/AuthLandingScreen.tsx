@@ -27,7 +27,7 @@ export function AuthLandingScreen({ navigation }: Props) {
 
                 <View className="mt-8 gap-3">
                     <Pressable
-                        onPress={() => navigation.navigate('Register')}
+                        onPress={() => navigation.navigate('Onboarding')}
                         className="h-14 flex-row items-center justify-center rounded-2xl bg-[#4F46E5]"
                     >
                         <Ionicons name="person-add" size={20} color="#fff" />

@@ -11,7 +11,7 @@ const BaseToast = ({ icon: Icon, iconColor, text1 }) => (
     <View className="bg-[#1C1C1C] w-[90%] px-4 py-4 rounded-xl mx-4 mb-8 flex-row justify-between items-center">
         <View className="flex-row items-center space-x-3 font-sans">
             <Icon size={18} color={iconColor} />
-            <Text className="text-white text-[11px] font-[Poppins-Medium]">
+            <Text className="text-white text-[11px] font-medium">
                 {text1}
             </Text>
         </View>
