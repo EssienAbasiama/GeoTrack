@@ -10,6 +10,7 @@ import {
     ActivityIndicator,
     Dimensions,
     Platform,
+    Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -195,15 +196,33 @@ export function NavigationScreen() {
                     return;
                 }
 
-                // Get initial location
-                const initialLocation = await Location.getCurrentPositionAsync({
-                    accuracy: Location.Accuracy.High,
-                });
-
-                const initialCoords = {
-                    latitude: initialLocation.coords.latitude,
-                    longitude: initialLocation.coords.longitude,
-                };
+                // Get initial location — try high accuracy, fall back to last known, then destination
+                let initialCoords: { latitude: number; longitude: number };
+                try {
+                    const initialLocation = await Location.getCurrentPositionAsync({
+                        accuracy: Location.Accuracy.High,
+                    });
+                    initialCoords = {
+                        latitude: initialLocation.coords.latitude,
+                        longitude: initialLocation.coords.longitude,
+                    };
+                } catch {
+                    // Simulator / device has no GPS fix yet — try last known position
+                    const lastKnown = await Location.getLastKnownPositionAsync();
+                    if (lastKnown) {
+                        initialCoords = {
+                            latitude: lastKnown.coords.latitude,
+                            longitude: lastKnown.coords.longitude,
+                        };
+                    } else {
+                        // No location available at all — centre on destination so map is still useful
+                        initialCoords = { latitude: destination.latitude, longitude: destination.longitude };
+                        Alert.alert(
+                            'Location Unavailable',
+                            'Could not get your current location. The map will show the destination. GPS will update when a fix is available.',
+                        );
+                    }
+                }
 
                 setUserLocation(initialCoords);
                 await updateDistanceAndRoute(initialCoords);
@@ -477,7 +496,7 @@ export function NavigationScreen() {
                         style={styles.backButton}
                         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                        <Ionicons name="arrow-back" size={22} color="#181A20" />
+                        <Ionicons name="arrow-back" size={22} color="#5A5D6B" />
                     </Pressable>
                     <View className="flex-1 mx-3">
                         <Text className="font-heading text-[16px] text-[#181A20]" numberOfLines={1}>
