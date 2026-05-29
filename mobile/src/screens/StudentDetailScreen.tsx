@@ -20,7 +20,12 @@ import { PieChart, LineChart, BarChart } from '../components/charts';
 const PRIMARY_COLOR = '#6343cc';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Mock session data - in production this would come from backend
+// Per-student attendance is not yet exposed in the API contract:
+// `attendanceApi.myHistory()` returns the *current* user's history, and
+// `sessionApi.records()` is per-session. Until the backend ships
+// `/admin/students/:id/history` (or similar), this screen keeps using mock
+// session data so the analytics charts have something to render.
+// TODO: replace MOCK_SESSIONS once that endpoint exists.
 interface SessionRecord {
     id: string;
     date: string;

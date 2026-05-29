@@ -1,10 +1,16 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 import { LogoutBottomSheet } from '../components/LogoutBottomSheet';
 import { useRole, ROLE_LABELS, ROLE_DESCRIPTIONS, UserRole } from '../store/RoleContext';
+import { useAuth } from '../store/AuthContext';
+import { deviceApi, faceApi } from '../services/apiClient';
+import type { ApiDevice, ApiFaceProfile } from '../types/api';
+import type { RootStackParamList } from '../types/navigation';
 
 const PRIMARY_COLOR = '#6343cc';
 
@@ -42,15 +48,54 @@ export function ProfileScreen() {
     const [pushEnabled, setPushEnabled] = useState(true);
     const [emailEnabled, setEmailEnabled] = useState(true);
     const [logoutVisible, setLogoutVisible] = useState(false);
-    const navigation = useNavigation();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const pulseScale = useRef(new Animated.Value(1)).current;
     const { role, setRole } = useRole();
+    const { user, signOut, rebindDevice } = useAuth();
 
-    const handleLogout = () => {
+    const [device, setDevice] = useState<ApiDevice | null>(null);
+    const [faceProfile, setFaceProfile] = useState<ApiFaceProfile | null>(null);
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const [{ data: deviceData }, { data: faceData }] = await Promise.all([
+                    deviceApi.me(),
+                    faceApi.status(),
+                ]);
+                if (!mounted) return;
+                setDevice(deviceData.devices?.[0] ?? null);
+                setFaceProfile(faceData.profile);
+            } catch {
+                // best-effort
+            }
+        })();
+        return () => { mounted = false; };
+    }, []);
+
+    const handleLogout = async () => {
         setLogoutVisible(false);
-        // Add your logout logic here
-        // e.g., clear auth tokens, reset navigation stack, etc.
-        console.log('User logged out');
+        await signOut();
+        navigation.reset({ index: 0, routes: [{ name: 'AuthLanding' }] });
+    };
+
+    const handleResetDevice = async () => {
+        try {
+            await deviceApi.reset();
+            const result = await rebindDevice();
+            if (result.ok) {
+                setDevice(result.device);
+                Toast.show({ type: 'success', text1: 'Device re-bound.', position: 'bottom' });
+            } else if ('conflict' in result && result.conflict) {
+                Toast.show({ type: 'error', text1: result.message, position: 'bottom' });
+            } else {
+                Toast.show({ type: 'error', text1: 'Could not re-bind device.', position: 'bottom' });
+            }
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Reset failed.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        }
     };
 
     useEffect(() => {
@@ -101,11 +146,56 @@ export function ProfileScreen() {
                         style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }}
                     />
                     <View className="flex-1">
-                        <Text className="font-heading text-[18px] text-[#181A20]">Jon Alshon</Text>
-                        <Text className="mt-1 text-[13px] text-[#8F94A4]">jon.alshon@gmail.com</Text>
+                        <Text className="font-heading text-[18px] text-[#181A20]">{user?.name ?? 'Welcome'}</Text>
+                        <Text className="mt-1 text-[13px] text-[#8F94A4]">{user?.email ?? ''}</Text>
                     </View>
                     <Pressable className="ml-2 h-8 px-3 items-center justify-center rounded-lg bg-[#6343cc]/10">
                         <Ionicons name="pencil" size={16} color={PRIMARY_COLOR} />
+                    </Pressable>
+                </View>
+
+                <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Security & Device</Text>
+
+                <View className="mb-6 rounded-[16px] overflow-hidden">
+                    <Pressable
+                        onPress={() => navigation.navigate('FaceEnrollment')}
+                        className="mb-2 flex-row items-center justify-between rounded-[14px] bg-[#F5F6FA] px-4 py-4"
+                    >
+                        <View className="flex-row items-center flex-1">
+                            <MaterialCommunityIcons name="face-recognition" size={18} color="#8F94A4" />
+                            <View className="ml-4 flex-1">
+                                <Text className="font-medium text-[15px] text-[#232736]">Face profile</Text>
+                                <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                    {faceProfile?.enrolled ? 'Enrolled' : 'Not enrolled'}
+                                </Text>
+                            </View>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#8F94A4" />
+                    </Pressable>
+
+                    <View className="mb-2 rounded-[14px] bg-[#F5F6FA] px-4 py-4">
+                        <View className="flex-row items-center">
+                            <Ionicons name="phone-portrait-outline" size={18} color="#8F94A4" />
+                            <View className="ml-4 flex-1">
+                                <Text className="font-medium text-[15px] text-[#232736]">Bound device</Text>
+                                <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                    {device
+                                        ? `${device.brand ?? ''} ${device.model ?? ''} · ${device.platform}`.trim()
+                                        : 'No device on file'}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    <Pressable
+                        onPress={handleResetDevice}
+                        className="flex-row items-center justify-between rounded-[14px] bg-[#FEEFEF] px-4 py-4"
+                    >
+                        <View className="flex-row items-center flex-1">
+                            <Ionicons name="refresh" size={18} color="#cc4361" />
+                            <Text className="ml-4 font-medium text-[15px] text-[#cc4361]">Reset device</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#cc4361" />
                     </Pressable>
                 </View>
 

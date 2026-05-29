@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -44,6 +45,77 @@ class User extends Authenticatable
     public function refreshTokens(): HasMany
     {
         return $this->hasMany(RefreshToken::class);
+    }
+
+    /**
+     * @return HasMany<Device, $this>
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(Device::class);
+    }
+
+    /**
+     * @return HasOne<Device, $this>
+     */
+    public function activeDevice(): HasOne
+    {
+        return $this->hasOne(Device::class)->whereNull('revoked_at')->latestOfMany();
+    }
+
+    /**
+     * @return HasMany<CourseEnrollment, $this>
+     */
+    public function enrollments(): HasMany
+    {
+        return $this->hasMany(CourseEnrollment::class);
+    }
+
+    /**
+     * @return HasMany<Course, $this>
+     */
+    public function lecturerCourses(): HasMany
+    {
+        return $this->hasMany(Course::class, 'lecturer_id');
+    }
+
+    /**
+     * @return HasMany<AttendanceRecord, $this>
+     */
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(AttendanceRecord::class);
+    }
+
+    /**
+     * @return HasOne<FaceProfile, $this>
+     */
+    public function faceProfile(): HasOne
+    {
+        return $this->hasOne(FaceProfile::class);
+    }
+
+    /**
+     * @return HasMany<PushToken, $this>
+     */
+    public function pushTokens(): HasMany
+    {
+        return $this->hasMany(PushToken::class);
+    }
+
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, ['hoc', 'superadmin'], true);
+    }
+
+    public function isLecturer(): bool
+    {
+        return $this->role === 'lecturer';
+    }
+
+    public function isStudent(): bool
+    {
+        return $this->role === 'student';
     }
 
     /**

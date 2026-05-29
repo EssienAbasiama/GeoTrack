@@ -13,6 +13,8 @@ import { SetBoundaryBottomSheet, type SetBoundaryBottomSheetRef, type ClassBound
 import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../components/LocationCheckBottomSheet';
 import { celebrationPattern } from '../utils/haptics';
 import { notifyCheckInSuccess } from '../services/notifications';
+import { courseApi, geofenceApi, sessionApi } from '../services/apiClient';
+import type { ApiCourseStudent } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
 const PRIMARY_LIGHT = '#8B6FE8'; // Lighter shade for lecturer/HOC
@@ -189,18 +191,67 @@ export function ClassDetailScreen() {
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [hasCheckedIn, setHasCheckedIn] = useState(false);
+    const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
     const searchAnim = useRef(new Animated.Value(0)).current;
     const checkInPulse = useRef(new Animated.Value(1)).current;
     const fabRotate = useRef(new Animated.Value(0)).current;
 
-    // Mock class location (in production, this would come from the backend)
+    // Class boundary loaded from backend. Falls back to FUNAAB-Abeokuta for
+    // dev so the map renders something while geofence isn't configured yet.
     const [classLocation, setClassLocation] = useState<ClassBoundary | null>({
-        // Default mock location - FUNAAB (Federal University of Agriculture, Abeokuta)
         latitude: 7.2266,
         longitude: 3.4400,
         radius: 50,
         name: venue,
     });
+
+    // ── Backend wiring ───────────────────────────────────────────────────────
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const [studentsRes, fenceRes, sessionRes] = await Promise.all([
+                    courseApi.students(classId).catch(() => null),
+                    geofenceApi.get(classId).catch(() => null),
+                    sessionApi.active(classId).catch(() => null),
+                ]);
+                if (!mounted) return;
+
+                if (studentsRes?.data?.students?.length) {
+                    setStudents(
+                        studentsRes.data.students.map((s: ApiCourseStudent, i: number) => ({
+                            id: String(s.id),
+                            name: s.name,
+                            matricNo: s.matric_no ?? '',
+                            email: s.email,
+                            avatar:
+                                s.avatar_url ??
+                                `https://randomuser.me/api/portraits/${i % 2 === 0 ? 'men' : 'women'}/${(i * 7) % 99}.jpg`,
+                            attendanceRate: s.attendance_rate ?? 0,
+                        })),
+                    );
+                }
+
+                const fence = fenceRes?.data?.geofence;
+                if (fence && fence.center_lat != null && fence.center_lng != null) {
+                    setClassLocation({
+                        latitude: fence.center_lat,
+                        longitude: fence.center_lng,
+                        radius: fence.radius_m ?? 50,
+                        polygonCoords: fence.polygon ?? undefined,
+                        name: fence.name ?? venue,
+                    });
+                }
+
+                if (sessionRes?.data?.session) {
+                    setActiveSessionId(sessionRes.data.session.id);
+                }
+            } catch {
+                // Soft-fail: keep mock students/boundary.
+            }
+        })();
+        return () => { mounted = false; };
+    }, [classId, venue]);
 
     // Determine if class is currently active based on schedule
     const isClassActive = useMemo(() => {
@@ -255,12 +306,19 @@ export function ClassDetailScreen() {
         }
     }, [isStudent, canStudentCheckIn, classLocation]);
 
-    const handleLecturerAttendanceToggle = () => {
+    const handleLecturerAttendanceToggle = async () => {
         if (!isClassActive) {
             handleOpenDirections();
             return;
         }
-        setAttendanceEnabled(classCode, !isAttendanceOpen);
+        // Toggle in-app shortcut state and start/end the backend session.
+        if (activeSessionId) {
+            await handleEndSession();
+            setAttendanceEnabled(classCode, false);
+        } else {
+            await handleStartSession();
+            setAttendanceEnabled(classCode, true);
+        }
     };
 
     const handleCheckInSuccess = useCallback(() => {
@@ -370,22 +428,72 @@ export function ClassDetailScreen() {
         }
     }, [isHOC]);
 
-    const handleAddStudent = (student: { id: string; name: string; matricNo: string; email: string }) => {
-        // Check if student already exists
-        if (students.some((s) => s.id === student.id)) {
-            return;
-        }
-        // Add student to the list
+    const handleAddStudent = async (student: { id: string; name: string; matricNo: string; email: string }) => {
+        if (students.some((s) => s.id === student.id)) return;
+
         const newStudent: Student = {
             ...student,
             avatar: `https://randomuser.me/api/portraits/${Math.random() > 0.5 ? 'men' : 'women'}/${Math.floor(Math.random() * 70)}.jpg`,
             attendanceRate: 0,
         };
         setStudents((prev) => [...prev, newStudent]);
+
+        try {
+            await courseApi.enroll(classId, {
+                matric_no: student.matricNo,
+            });
+            Toast.show({ type: 'success', text1: `${student.name} enrolled.`, position: 'bottom' });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not enroll student.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        }
     };
 
-    const handleSaveLocation = (location: ClassBoundary) => {
+    const handleSaveLocation = async (location: ClassBoundary) => {
         setClassLocation(location);
+        try {
+            const polygon = location.polygonCoords;
+            await geofenceApi.upsert(classId, {
+                shape: polygon && polygon.length >= 3 ? 'polygon' : 'circle',
+                center_lat: location.latitude,
+                center_lng: location.longitude,
+                radius_m: location.radius ?? 50,
+                polygon: polygon ?? undefined,
+                label: location.name,
+            });
+            Toast.show({ type: 'success', text1: 'Boundary saved.', position: 'bottom' });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not save boundary.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        }
+    };
+
+    const handleStartSession = async () => {
+        try {
+            const { data } = await sessionApi.start(classId);
+            setActiveSessionId(data.session.id);
+            navigation.navigate('LecturerSession', {
+                sessionId: data.session.id,
+                courseId: classId,
+                classCode,
+                className,
+            });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not start session.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        }
+    };
+
+    const handleEndSession = async () => {
+        if (!activeSessionId) return;
+        try {
+            await sessionApi.close(activeSessionId);
+            setActiveSessionId(null);
+            Toast.show({ type: 'success', text1: 'Session closed.', position: 'bottom' });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not close session.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        }
     };
 
     return (
@@ -597,10 +705,12 @@ export function ClassDetailScreen() {
                 <Pressable
                     onPress={() => {
                         if (canStudentCheckIn) {
-                            // Class is active - open location check for check-in flow
-                            locationCheckRef.current?.open();
+                            navigation.navigate('CheckIn', {
+                                courseId: classId,
+                                classCode,
+                                className,
+                            });
                         } else {
-                            // Class not active or already checked in - open directions
                             handleOpenDirections();
                         }
                     }}

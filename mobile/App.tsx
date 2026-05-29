@@ -21,6 +21,7 @@ import { RoleProvider } from './src/store/RoleContext';
 import { AuthProvider } from './src/store/AuthContext';
 import { AttendanceControlProvider } from './src/store/AttendanceControlContext';
 import { navigationRef } from './src/services/apiClient';
+import { PresencePoller } from './src/services/presencePoller';
 import Toast from 'react-native-toast-message';
 import toastConfig from './src/components/toastConfig';
 import {
@@ -79,8 +80,17 @@ export default function App() {
         const responseSubscription = addNotificationResponseListener((response) => {
             const data = response.notification.request.content.data;
             console.log('Notification tapped:', data);
-            // Handle navigation based on notification type
-            // e.g., navigate to class detail if classCode is present
+            // If the notification carries a presence_check_id, jump straight
+            // into the PresenceCheck screen.
+            const presenceId = data?.presence_check_id ?? data?.presenceCheckId;
+            if (presenceId && navigationRef.isReady()) {
+                navigationRef.navigate('PresenceCheck', {
+                    checkId: presenceId as string | number,
+                    courseCode: (data?.courseCode as string) ?? (data?.course_code as string) ?? '',
+                    courseName: (data?.courseName as string) ?? (data?.course_name as string) ?? '',
+                    expiresAt: (data?.expiresAt as string) ?? (data?.expires_at as string),
+                });
+            }
         });
 
         // Listen for foreground notifications
@@ -117,6 +127,7 @@ export default function App() {
                                     <NavigationContainer linking={linking} ref={navigationRef}>
                                         <RootNavigator />
                                     </NavigationContainer>
+                                    <PresencePoller />
                                 </AuthProvider>
                                 <StatusBar style="dark" />
                             </View>

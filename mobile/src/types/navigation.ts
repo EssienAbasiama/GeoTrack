@@ -23,7 +23,30 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: undefined;
   MainTabs: undefined;
-  CheckIn: undefined;
+  CheckIn: {
+    courseId: string;
+    classCode: string;
+    className: string;
+  };
+  DeviceConflict: {
+    message?: string;
+  } | undefined;
+  FaceEnrollment: {
+    /** When true, the screen is shown right after device bind. */
+    promptedAfterBind?: boolean;
+  } | undefined;
+  PresenceCheck: {
+    checkId: string | number;
+    courseCode: string;
+    courseName: string;
+    expiresAt?: string;
+  };
+  LecturerSession: {
+    sessionId: string | number;
+    courseId: string | number;
+    classCode: string;
+    className: string;
+  };
   ClassDetail: {
     classId: string;
     classCode: string;

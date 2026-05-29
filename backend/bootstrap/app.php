@@ -1,5 +1,9 @@
 <?php
 
+use App\Console\Commands\CloseExpiredSessions;
+use App\Http\Middleware\EnsureBoundDevice;
+use App\Services\PresenceCheckService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,7 +16,23 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'bound.device' => EnsureBoundDevice::class,
+        ]);
+    })
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->call(function (): void {
+            app(PresenceCheckService::class)->triggerForActiveSessions();
+        })->everyMinute()->name('presence-checks:trigger')->withoutOverlapping();
+
+        $schedule->call(function (): void {
+            app(PresenceCheckService::class)->markMissed();
+        })->everyMinute()->name('presence-checks:mark-missed')->withoutOverlapping();
+
+        $schedule->command(CloseExpiredSessions::class)
+            ->everyMinute()
+            ->name('sessions:close-expired')
+            ->withoutOverlapping();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

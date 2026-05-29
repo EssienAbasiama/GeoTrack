@@ -8,6 +8,9 @@ import type { RootStackParamList } from "../types/navigation";
 import { useRole } from "../store/RoleContext";
 import { useAttendanceControl } from "../store/AttendanceControlContext";
 import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from "../components/AdminCreateBottomSheet";
+import { dashboardApi } from "../services/apiClient";
+import { useAuth } from "../store/AuthContext";
+import type { ApiStudentDashboard, ApiLecturerDashboard, ApiAdminDashboard } from "../types/api";
 
 const avatarSource = { uri: "https://randomuser.me/api/portraits/men/32.jpg" };
 
@@ -25,23 +28,74 @@ export function HomeScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { isSuperAdmin, isStudent, isLecturer, isHOC, role } = useRole();
     const { isAttendanceEnabled, setAttendanceEnabled } = useAttendanceControl();
+    const { user } = useAuth();
     const adminSheetRef = useRef<AdminCreateBottomSheetRef>(null);
 
-    // --- Mock upcoming class data ---
-    // Using FUNAAB (Federal University of Agriculture, Abeokuta) coordinates for testing
-    // Class is set to be ACTIVE NOW for testing liveness check flow
-    const upcomingClass = {
-        code: 'ELE 512',
-        name: 'Digital Signal Processing',
-        venue: 'LT 201',
-        day: new Date().toLocaleDateString('en-US', { weekday: 'long' }), // Today
-        startTime: new Date(now.getTime() - 30 * 60 * 1000), // Started 30 mins ago (ACTIVE)
-        endTime: new Date(now.getTime() + 90 * 60 * 1000), // Ends in 1.5 hours
-        location: {
-            latitude: 7.2266,
-            longitude: 3.4400,
-        },
-    };
+    // --- Real dashboard data (with mock-data fallback so the UI never goes blank) ---
+    const [studentDash, setStudentDash] = useState<ApiStudentDashboard | null>(null);
+    const [lecturerDash, setLecturerDash] = useState<ApiLecturerDashboard | null>(null);
+    const [adminDash, setAdminDash] = useState<ApiAdminDashboard | null>(null);
+
+    useEffect(() => {
+        let mounted = true;
+        const load = async () => {
+            try {
+                if (isSuperAdmin) {
+                    const { data } = await dashboardApi.admin();
+                    if (mounted) setAdminDash(data);
+                } else if (isLecturer || isHOC) {
+                    const { data } = await dashboardApi.lecturer();
+                    if (mounted) setLecturerDash(data);
+                } else {
+                    const { data } = await dashboardApi.student();
+                    if (mounted) setStudentDash(data);
+                }
+            } catch {
+                // Soft-fail: UI keeps the mocked card so animations still play.
+            }
+        };
+        load();
+        return () => { mounted = false; };
+    }, [isSuperAdmin, isLecturer, isHOC]);
+
+    // --- Upcoming class (real dashboard data, mock-data fallback) ---
+    const upcomingCourse =
+        studentDash?.upcoming_classes?.[0] ||
+        lecturerDash?.courses?.[0] ||
+        null;
+    const upcomingApiSession = lecturerDash?.active_sessions?.[0] ?? null;
+    const fenceCenter = upcomingCourse?.geofence
+        ? {
+              latitude: Number(upcomingCourse.geofence.center_lat ?? 7.2266),
+              longitude: Number(upcomingCourse.geofence.center_lng ?? 3.44),
+          }
+        : { latitude: 7.2266, longitude: 3.44 };
+
+    const upcomingClass = upcomingCourse
+        ? {
+            id: upcomingCourse.id,
+            code: upcomingCourse.code,
+            name: upcomingCourse.title ?? upcomingCourse.name ?? '',
+            venue: upcomingCourse.venue ?? '',
+            day: upcomingCourse.day ?? new Date().toLocaleDateString('en-US', { weekday: 'long' }),
+            startTime: upcomingApiSession?.starts_at
+                ? new Date(upcomingApiSession.starts_at)
+                : new Date(now.getTime() - 30 * 60 * 1000),
+            endTime: upcomingApiSession?.ends_at
+                ? new Date(upcomingApiSession.ends_at)
+                : new Date(now.getTime() + 90 * 60 * 1000),
+            location: fenceCenter,
+        }
+        : {
+            id: '',
+            code: 'ELE 512',
+            name: 'Digital Signal Processing',
+            venue: 'LT 201',
+            day: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
+            startTime: new Date(now.getTime() - 30 * 60 * 1000),
+            endTime: new Date(now.getTime() + 90 * 60 * 1000),
+            location: { latitude: 7.2266, longitude: 3.4400 },
+        };
 
     // Calculate countdown and determine if class is currently active
     const getCountdown = () => {
@@ -141,7 +195,17 @@ export function HomeScreen() {
         Animated.sequence([
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
-        ]).start(() => navigation.navigate("CheckIn"));
+        ]).start(() => {
+            // upcomingClass.id isn't tracked in this mock-data slice yet; the
+            // CheckInScreen will surface an empty state if the course id is
+            // missing. Real ids come from dashboardApi once the home screen
+            // is fully wired to the backend.
+            navigation.navigate("CheckIn", {
+                courseId: String(upcomingClass.id ?? ''),
+                classCode: upcomingClass.code,
+                className: upcomingClass.name,
+            });
+        });
     };
 
     const handleGetDirections = () => {
@@ -267,7 +331,7 @@ export function HomeScreen() {
                                         </Text>
                                     </View>
                                 </View>
-                                <Text className="font-heading text-[18px] leading-[20px] text-[#2D2F35]">Essien Abasiama</Text>
+                                <Text className="font-heading text-[18px] leading-[20px] text-[#2D2F35]">{user?.name ?? 'Welcome'}</Text>
                             </View>
                         </View>
                         <View className="flex-row items-center gap-4">
@@ -315,21 +379,21 @@ export function HomeScreen() {
                                 <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#E8F5E9] mb-2">
                                     <Ionicons name="book" size={18} color="#4CAF50" />
                                 </View>
-                                <Text className="font-heading text-[22px] text-[#181A20]">12</Text>
+                                <Text className="font-heading text-[22px] text-[#181A20]">{adminDash?.counts?.courses ?? '--'}</Text>
                                 <Text className="text-[12px] text-[#8F94A4]">Classes</Text>
                             </View>
                             <View className="flex-1 rounded-[16px] bg-white p-4 shadow-sm shadow-black/5">
                                 <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] mb-2">
                                     <Ionicons name="people" size={18} color="#2196F3" />
                                 </View>
-                                <Text className="font-heading text-[22px] text-[#181A20]">8</Text>
+                                <Text className="font-heading text-[22px] text-[#181A20]">{adminDash?.counts?.lecturers ?? '--'}</Text>
                                 <Text className="text-[12px] text-[#8F94A4]">Lecturers</Text>
                             </View>
                             <View className="flex-1 rounded-[16px] bg-white p-4 shadow-sm shadow-black/5">
                                 <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#F0EDFC] mb-2">
                                     <Ionicons name="school" size={18} color="#6343cc" />
                                 </View>
-                                <Text className="font-heading text-[22px] text-[#181A20]">224</Text>
+                                <Text className="font-heading text-[22px] text-[#181A20]">{adminDash?.counts?.students ?? '--'}</Text>
                                 <Text className="text-[12px] text-[#8F94A4]">Students</Text>
                             </View>
                         </View>

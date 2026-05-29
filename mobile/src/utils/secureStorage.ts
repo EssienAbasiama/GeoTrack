@@ -34,6 +34,8 @@ const KEYS = {
     ACCESS_TOKEN: 'geotrack_access_token',
     REFRESH_TOKEN: 'geotrack_refresh_token',
     USER_DATA: 'geotrack_user_data',
+    DEVICE_UID: 'geotrack_device_uid',
+    PUSH_TOKEN: 'geotrack_push_token',
 } as const;
 
 export const getAccessToken = () => storeGet(KEYS.ACCESS_TOKEN);
@@ -63,6 +65,15 @@ export const clearAuthStorage = () =>
         storeDelete(KEYS.REFRESH_TOKEN),
         storeDelete(KEYS.USER_DATA),
     ]);
+
+// ─── Device UID & Push token ─────────────────────────────────────────────────
+export const getDeviceUid = () => storeGet(KEYS.DEVICE_UID);
+export const setDeviceUid = (uid: string) => storeSet(KEYS.DEVICE_UID, uid);
+export const removeDeviceUid = () => storeDelete(KEYS.DEVICE_UID);
+
+export const getStoredPushToken = () => storeGet(KEYS.PUSH_TOKEN);
+export const setStoredPushToken = (token: string) => storeSet(KEYS.PUSH_TOKEN, token);
+export const removeStoredPushToken = () => storeDelete(KEYS.PUSH_TOKEN);
 
 // Legacy aliases kept for backwards compatibility
 export const getToken = getAccessToken;

@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,6 +8,8 @@ import { useRole } from '../store/RoleContext';
 import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from '../components/AdminCreateBottomSheet';
 import type { ClassEntity } from '../types/roles';
 import type { RootStackParamList } from '../types/navigation';
+import { courseApi } from '../services/apiClient';
+import type { ApiCourse } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
 
@@ -215,6 +217,22 @@ function ClassCard({ item, index, onPress }: { item: ClassEntity; index: number;
     );
 }
 
+function apiCourseToClassEntity(c: ApiCourse): ClassEntity {
+    return {
+        id: String(c.id),
+        code: c.code,
+        name: c.title ?? c.name ?? '',
+        venue: c.venue ?? '',
+        day: c.day ?? '',
+        startTime: c.start_time ?? '',
+        endTime: c.end_time ?? '',
+        lecturerName: c.lecturer?.name ?? c.lecturer_name ?? '',
+        lecturerId: c.lecturer_id != null ? String(c.lecturer_id) : undefined,
+        totalStudents: c.total_students,
+        attendanceRate: c.attendance_rate ?? undefined,
+    };
+}
+
 export function ClassesScreen() {
     const { isSuperAdmin, isHOC, role } = useRole();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -225,6 +243,37 @@ export function ClassesScreen() {
     const searchInputRef = useRef<TextInput>(null);
     const fabBounce = useRef(new Animated.Value(1)).current;
     const createSheetRef = useRef<AdminCreateBottomSheetRef>(null);
+
+    const [classes, setClasses] = useState<ClassEntity[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    const loadClasses = async () => {
+        try {
+            const { data } = await courseApi.list();
+            setClasses((data.courses ?? []).map(apiCourseToClassEntity));
+            setLoadError(null);
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Failed to load classes.';
+            setLoadError(msg);
+        }
+    };
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            await loadClasses();
+            if (mounted) setLoading(false);
+        })();
+        return () => { mounted = false; };
+    }, []);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadClasses();
+        setRefreshing(false);
+    };
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -276,22 +325,23 @@ export function ClassesScreen() {
         }
     };
 
+    const listSource = classes.length === 0 && loadError ? MOCK_CLASSES : classes;
     const headerTitle = isSuperAdmin ? 'All Classes' : 'My Classes';
     const headerSubtitle = isSuperAdmin
-        ? `${MOCK_CLASSES.length} classes in department`
+        ? `${listSource.length} classes in department`
         : 'Your enrolled classes';
 
     const filteredClasses = useMemo(() => {
-        if (!searchQuery.trim()) return MOCK_CLASSES;
+        if (!searchQuery.trim()) return listSource;
         const q = searchQuery.toLowerCase();
-        return MOCK_CLASSES.filter(
+        return listSource.filter(
             (c) =>
                 c.code.toLowerCase().includes(q) ||
                 c.name.toLowerCase().includes(q) ||
-                c.lecturerName.toLowerCase().includes(q) ||
+                (c.lecturerName ?? '').toLowerCase().includes(q) ||
                 c.venue.toLowerCase().includes(q)
         );
-    }, [searchQuery]);
+    }, [searchQuery, listSource]);
 
     return (
         <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9]">
@@ -391,29 +441,51 @@ export function ClassesScreen() {
                 </View>
 
                 {/* Class List */}
-                <FlatList
-                    data={filteredClasses}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item, index }) => (
-                        <ClassCard
-                            item={item}
-                            index={index}
-                            onPress={() => {
-                                navigation.navigate('ClassDetail', {
-                                    classId: item.id,
-                                    classCode: item.code,
-                                    className: item.name,
-                                    venue: item.venue,
-                                    day: item.day,
-                                    startTime: item.startTime,
-                                    endTime: item.endTime,
-                                });
-                            }}
-                        />
-                    )}
-                    contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 140 }}
-                    showsVerticalScrollIndicator={false}
-                />
+                {loading ? (
+                    <View className="flex-1 items-center justify-center">
+                        <ActivityIndicator color={PRIMARY_COLOR} />
+                    </View>
+                ) : (
+                    <FlatList
+                        data={filteredClasses}
+                        keyExtractor={(item) => item.id}
+                        refreshControl={
+                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PRIMARY_COLOR} />
+                        }
+                        ListEmptyComponent={
+                            <View className="items-center py-10 px-6">
+                                <View className="h-14 w-14 items-center justify-center rounded-full bg-[#F0EDFC] mb-3">
+                                    <Ionicons name="book" size={28} color={PRIMARY_COLOR} />
+                                </View>
+                                <Text className="font-medium text-[15px] text-[#181A20] text-center">
+                                    {loadError ? 'Showing cached data' : 'No classes yet'}
+                                </Text>
+                                <Text className="text-[13px] text-[#8F94A4] mt-1 text-center">
+                                    {loadError ?? 'Pull down to refresh once the backend is reachable.'}
+                                </Text>
+                            </View>
+                        }
+                        renderItem={({ item, index }) => (
+                            <ClassCard
+                                item={item}
+                                index={index}
+                                onPress={() => {
+                                    navigation.navigate('ClassDetail', {
+                                        classId: item.id,
+                                        classCode: item.code,
+                                        className: item.name,
+                                        venue: item.venue,
+                                        day: item.day,
+                                        startTime: item.startTime,
+                                        endTime: item.endTime,
+                                    });
+                                }}
+                            />
+                        )}
+                        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 140 }}
+                        showsVerticalScrollIndicator={false}
+                    />
+                )}
             </Animated.View>
 
             {/* Floating Action Button - Only for HOC and SuperAdmin */}

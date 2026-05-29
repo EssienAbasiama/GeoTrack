@@ -14,6 +14,10 @@ import { CheckInScreen } from '../screens/CheckInScreen';
 import { ClassDetailScreen } from '../screens/ClassDetailScreen';
 import { NavigationScreen } from '../screens/NavigationScreen';
 import { StudentDetailScreen } from '../screens/StudentDetailScreen';
+import { DeviceConflictScreen } from '../screens/DeviceConflictScreen';
+import { FaceEnrollmentScreen } from '../screens/FaceEnrollmentScreen';
+import { PresenceCheckScreen } from '../screens/PresenceCheckScreen';
+import { LecturerSessionScreen } from '../screens/LecturerSessionScreen';
 import { useAuth } from '../store/AuthContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -171,6 +175,37 @@ export function RootNavigator() {
             <Stack.Screen
                 name="StudentDetail"
                 component={StudentDetailScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="DeviceConflict"
+                component={DeviceConflictScreen}
+                options={{
+                    animationEnabled: true,
+                    gestureEnabled: false,
+                }}
+            />
+            <Stack.Screen
+                name="FaceEnrollment"
+                component={FaceEnrollmentScreen}
+                options={{
+                    animationEnabled: true,
+                }}
+            />
+            <Stack.Screen
+                name="PresenceCheck"
+                component={PresenceCheckScreen}
+                options={{
+                    animationEnabled: true,
+                    presentation: 'modal',
+                    gestureEnabled: false,
+                }}
+            />
+            <Stack.Screen
+                name="LecturerSession"
+                component={LecturerSessionScreen}
                 options={{
                     animationEnabled: true,
                 }}

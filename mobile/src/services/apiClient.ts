@@ -1,8 +1,24 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import { createNavigationContainerRef } from '@react-navigation/native';
-import { getAccessToken, getRefreshToken, setAccessToken, setRefreshToken, clearAuthStorage } from '../utils/secureStorage';
+import { getAccessToken, getRefreshToken, setAccessToken, setRefreshToken, clearAuthStorage, getDeviceUid } from '../utils/secureStorage';
 import type { RootStackParamList } from '../types/navigation';
+import type {
+    ApiDevice,
+    DeviceFingerprint,
+    ApiCourse,
+    ApiCourseStudent,
+    ApiGeofence,
+    ApiSession,
+    ApiAttendanceRecord,
+    ApiPresenceCheck,
+    ApiFaceProfile,
+    ApiStudentDashboard,
+    ApiLecturerDashboard,
+    ApiAdminDashboard,
+    ApiLecturer,
+    ApiPushTokenResponse,
+} from '../types/api';
 
 // ─── Navigation ref (register in App.tsx: <NavigationContainer ref={navigationRef}>) ───
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
@@ -104,6 +120,11 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     const token = await getAccessToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
+
+    // Bound-device header — required by the backend's `bound.device` middleware
+    // for student-restricted routes. Sent on every request once a device UID exists.
+    const deviceUid = await getDeviceUid();
+    if (deviceUid) config.headers['X-Device-UID'] = deviceUid;
 
     config._retryCount ??= 0;
     config._requestId ??= Math.random().toString(36).slice(2, 11);
@@ -317,6 +338,209 @@ export const authApi = {
         password: string;
         password_confirmation: string;
     }) => apiClient.post<{ message: string }>('/auth/reset-password', body),
+};
+
+// ─── Envelope unwrapper ──────────────────────────────────────────────────────
+// Backend wraps successful payloads as `{message, data: {...}}`. The mobile
+// screens destructure `const { data } = await xApi.method()` and access
+// `data.courses` (etc) — i.e. they expect the inner envelope's body, not the
+// outer envelope. Each typed wrapper pipes its result through `unwrap` so the
+// caller sees the inner `data` shape directly.
+import type { AxiosResponse } from 'axios';
+const unwrap = <T>(p: Promise<AxiosResponse<{ data: T; message?: string }>>): Promise<AxiosResponse<T>> =>
+    p.then((r) => ({ ...r, data: r.data.data }));
+
+// ─── Device API ──────────────────────────────────────────────────────────────
+export const deviceApi = {
+    bind: (body: DeviceFingerprint & { push_token?: string }) =>
+        unwrap<{ device: ApiDevice }>(
+            apiClient.post('/devices/bind', body),
+        ),
+
+    me: () => unwrap<{ devices: ApiDevice[] }>(apiClient.get('/devices/me')),
+
+    reset: () => apiClient.post<{ message: string; data?: { revoked: number } }>('/devices/reset', {}),
+
+    setPushToken: (deviceId: number | string, token: string) =>
+        unwrap<{ device: ApiDevice }>(
+            apiClient.post(`/devices/${deviceId}/push-token`, { push_token: token }),
+        ),
+};
+
+// ─── Course API ──────────────────────────────────────────────────────────────
+export const courseApi = {
+    list: () => unwrap<{ courses: ApiCourse[] }>(apiClient.get('/courses')),
+
+    create: (body: {
+        code: string;
+        title: string;
+        description?: string;
+        department: string;
+        level?: string;
+        lecturer_id?: number;
+    }) => unwrap<{ course: ApiCourse }>(apiClient.post('/courses', body)),
+
+    get: (id: number | string) =>
+        unwrap<{ course: ApiCourse }>(apiClient.get(`/courses/${id}`)),
+
+    update: (id: number | string, body: Partial<ApiCourse>) =>
+        unwrap<{ course: ApiCourse }>(apiClient.patch(`/courses/${id}`, body)),
+
+    delete: (id: number | string) =>
+        apiClient.delete<{ message: string }>(`/courses/${id}`),
+
+    enroll: (
+        courseId: number | string,
+        body: { user_id?: number; matric_no?: string },
+    ) => apiClient.post<{ message: string }>(`/courses/${courseId}/enroll`, body),
+
+    selfEnroll: (courseId: number | string) =>
+        apiClient.post<{ message: string }>(`/courses/${courseId}/self-enroll`, {}),
+
+    unenroll: (courseId: number | string, userId: number | string) =>
+        apiClient.delete<{ message: string }>(`/courses/${courseId}/enroll/${userId}`),
+
+    students: (courseId: number | string) =>
+        unwrap<{ students: ApiCourseStudent[]; total_sessions?: number }>(
+            apiClient.get(`/courses/${courseId}/students`),
+        ),
+};
+
+// ─── Geofence API ────────────────────────────────────────────────────────────
+export const geofenceApi = {
+    get: (courseId: number | string) =>
+        unwrap<{ geofence: ApiGeofence | null }>(
+            apiClient.get(`/courses/${courseId}/geofence`),
+        ),
+
+    upsert: (
+        courseId: number | string,
+        body: {
+            shape: 'circle' | 'polygon';
+            center_lat?: number;
+            center_lng?: number;
+            radius_m?: number;
+            polygon?: Array<{ latitude: number; longitude: number }>;
+            label?: string;
+        },
+    ) =>
+        unwrap<{ geofence: ApiGeofence }>(
+            apiClient.put(`/courses/${courseId}/geofence`, body),
+        ),
+};
+
+// ─── Session API ─────────────────────────────────────────────────────────────
+export const sessionApi = {
+    start: (
+        courseId: number | string,
+        body: {
+            mode?: 'tap' | 'face_recognition';
+            duration_minutes?: number;
+            presence_checks_enabled?: boolean;
+            presence_check_interval_minutes?: number;
+            late_after_minutes?: number;
+        } = {},
+    ) =>
+        unwrap<{ session: ApiSession }>(
+            apiClient.post(`/courses/${courseId}/sessions`, body),
+        ),
+
+    list: (courseId: number | string) =>
+        unwrap<{ sessions: ApiSession[] }>(apiClient.get(`/courses/${courseId}/sessions`)),
+
+    active: (courseId: number | string) =>
+        unwrap<{ session: ApiSession | null }>(
+            apiClient.get(`/courses/${courseId}/sessions/active`),
+        ),
+
+    get: (id: number | string) =>
+        unwrap<{ session: ApiSession }>(apiClient.get(`/sessions/${id}`)),
+
+    close: (id: number | string) =>
+        unwrap<{ session: ApiSession }>(apiClient.post(`/sessions/${id}/close`, {})),
+
+    records: (id: number | string) =>
+        unwrap<{ records: ApiAttendanceRecord[] }>(apiClient.get(`/sessions/${id}/records`)),
+
+    manualPresenceCheck: (id: number | string) =>
+        unwrap<{ presence_check: ApiPresenceCheck }>(
+            apiClient.post(`/sessions/${id}/presence-check`, {}),
+        ),
+};
+
+// ─── Attendance API ──────────────────────────────────────────────────────────
+export const attendanceApi = {
+    checkIn: (
+        sessionId: number | string,
+        body: {
+            latitude: number;
+            longitude: number;
+            accuracy?: number;
+            face_image_base64?: string;
+        },
+    ) =>
+        unwrap<{ record: ApiAttendanceRecord }>(
+            apiClient.post(`/sessions/${sessionId}/checkin`, body),
+        ),
+
+    myRecord: (sessionId: number | string) =>
+        unwrap<{ record: ApiAttendanceRecord | null }>(
+            apiClient.get(`/sessions/${sessionId}/my-record`),
+        ),
+
+    myHistory: () =>
+        unwrap<{ records: ApiAttendanceRecord[] }>(apiClient.get('/me/attendance')),
+};
+
+// ─── Presence-check API ──────────────────────────────────────────────────────
+export const presenceApi = {
+    pending: () =>
+        unwrap<{ responses: ApiPresenceCheck[] }>(apiClient.get('/presence-checks/pending')),
+
+    respond: (
+        checkId: number | string,
+        body: {
+            latitude: number;
+            longitude: number;
+            accuracy?: number;
+            face_image_base64?: string;
+        },
+    ) => apiClient.post<{ message: string }>(`/presence-checks/${checkId}/respond`, body),
+};
+
+// ─── Face-profile API ────────────────────────────────────────────────────────
+export const faceApi = {
+    enroll: (base64: string) =>
+        unwrap<{ profile: ApiFaceProfile }>(
+            apiClient.post('/face-profile', { face_image_base64: base64 }),
+        ),
+
+    status: () => unwrap<{ profile: ApiFaceProfile }>(apiClient.get('/face-profile')),
+
+    clear: () => apiClient.delete<{ message: string }>('/face-profile'),
+};
+
+// ─── Dashboard API ───────────────────────────────────────────────────────────
+export const dashboardApi = {
+    student: () => unwrap<ApiStudentDashboard>(apiClient.get('/dashboard/student')),
+    lecturer: () => unwrap<ApiLecturerDashboard>(apiClient.get('/dashboard/lecturer')),
+    admin: () => unwrap<ApiAdminDashboard>(apiClient.get('/dashboard/admin')),
+};
+
+// ─── Lecturer API (admin) ────────────────────────────────────────────────────
+export const lecturerApi = {
+    list: () => unwrap<{ lecturers: ApiLecturer[] }>(apiClient.get('/lecturers')),
+
+    assignCourse: (lecturerId: number | string, courseId: number | string) =>
+        apiClient.post<{ message: string }>(`/lecturers/${lecturerId}/assign-course`, {
+            course_id: courseId,
+        }),
+};
+
+// ─── Push-token API ──────────────────────────────────────────────────────────
+export const pushTokenApi = {
+    register: (body: { token: string; device_uid: string; platform: string }) =>
+        apiClient.post<ApiPushTokenResponse>('/push-tokens', body),
 };
 
 export default apiClient;

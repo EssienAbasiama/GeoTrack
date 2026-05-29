@@ -2,6 +2,8 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { pushTokenApi } from './apiClient';
+import { getDeviceUid, setStoredPushToken, getStoredPushToken } from '../utils/secureStorage';
 
 /**
  * Notification Service for GeoTrack
@@ -338,9 +340,35 @@ export function addNotificationReceivedListener(
     return Notifications.addNotificationReceivedListener(callback);
 }
 
+/**
+ * Register the Expo push token with the backend. Skips work if we've already
+ * registered the same token for the same device.
+ */
+export async function registerPushTokenWithBackend(): Promise<void> {
+    const token = await getPushToken();
+    if (!token) return;
+    const deviceUid = await getDeviceUid();
+    if (!deviceUid) return;
+
+    const already = await getStoredPushToken();
+    if (already === token) return;
+
+    try {
+        await pushTokenApi.register({
+            token,
+            device_uid: deviceUid,
+            platform: Platform.OS,
+        });
+        await setStoredPushToken(token);
+    } catch (error) {
+        console.warn('Failed to register push token with backend:', error);
+    }
+}
+
 export default {
     requestNotificationPermissions,
     getPushToken,
+    registerPushTokenWithBackend,
     scheduleClassReminder,
     scheduleCheckInReminder,
     sendImmediateNotification,

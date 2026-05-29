@@ -1,8 +1,10 @@
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useMemo, useState } from 'react';
-import { Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Pressable, RefreshControl, Text, TextInput, View, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from '../components/AdminCreateBottomSheet';
+import { lecturerApi } from '../services/apiClient';
+import type { ApiLecturer } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
 
@@ -262,6 +264,23 @@ function LecturerCard({ item, index }: { item: Lecturer; index: number }) {
     );
 }
 
+function apiLecturerToLocal(l: ApiLecturer, idx: number): Lecturer {
+    const classes: LecturerClass[] = (l.assigned_courses ?? []).map((c, i) => ({
+        id: String(c.id),
+        code: c.code,
+        color: CLASS_COLORS[i % CLASS_COLORS.length],
+    }));
+    return {
+        id: String(l.id),
+        name: l.name,
+        email: l.email,
+        department: l.department ?? '',
+        avatar: l.avatar_url ?? `https://randomuser.me/api/portraits/${idx % 2 === 0 ? 'men' : 'women'}/${idx + 20}.jpg`,
+        classes,
+        totalStudents: l.total_students ?? 0,
+    };
+}
+
 export function LecturersScreen() {
     const headerAnim = useRef(new Animated.Value(0)).current;
     const [searchVisible, setSearchVisible] = useState(false);
@@ -270,6 +289,37 @@ export function LecturersScreen() {
     const searchInputRef = useRef<TextInput>(null);
     const fabBounce = useRef(new Animated.Value(1)).current;
     const createSheetRef = useRef<AdminCreateBottomSheetRef>(null);
+
+    const [lecturers, setLecturers] = useState<Lecturer[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    const loadLecturers = async () => {
+        try {
+            const { data } = await lecturerApi.list();
+            setLecturers((data.lecturers ?? []).map(apiLecturerToLocal));
+            setLoadError(null);
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Failed to load lecturers.';
+            setLoadError(msg);
+        }
+    };
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            await loadLecturers();
+            if (mounted) setLoading(false);
+        })();
+        return () => { mounted = false; };
+    }, []);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadLecturers();
+        setRefreshing(false);
+    };
 
     useEffect(() => {
         Animated.timing(headerAnim, {
@@ -321,19 +371,20 @@ export function LecturersScreen() {
         }
     };
 
-    const totalLecturers = MOCK_LECTURERS.length;
-    const assignedLecturers = MOCK_LECTURERS.filter((l) => l.classes.length > 0).length;
+    const source = lecturers.length === 0 && loadError ? MOCK_LECTURERS : lecturers;
+    const totalLecturers = source.length;
+    const assignedLecturers = source.filter((l) => l.classes.length > 0).length;
 
     const filteredLecturers = useMemo(() => {
-        if (!searchQuery.trim()) return MOCK_LECTURERS;
+        if (!searchQuery.trim()) return source;
         const q = searchQuery.toLowerCase();
-        return MOCK_LECTURERS.filter(
+        return source.filter(
             (l) =>
                 l.name.toLowerCase().includes(q) ||
                 l.email.toLowerCase().includes(q) ||
                 l.classes.some((c) => c.code.toLowerCase().includes(q))
         );
-    }, [searchQuery]);
+    }, [searchQuery, source]);
 
     return (
         <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9]">
@@ -342,6 +393,28 @@ export function LecturersScreen() {
                 keyExtractor={(item) => item.id}
                 contentContainerClassName="px-5 pt-3 pb-[140px]"
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PRIMARY_COLOR} />
+                }
+                ListEmptyComponent={
+                    loading ? (
+                        <View className="items-center py-10">
+                            <ActivityIndicator color={PRIMARY_COLOR} />
+                        </View>
+                    ) : (
+                        <View className="items-center py-10 px-6">
+                            <View className="h-14 w-14 items-center justify-center rounded-full bg-[#F0EDFC] mb-3">
+                                <Ionicons name="people" size={28} color={PRIMARY_COLOR} />
+                            </View>
+                            <Text className="font-medium text-[15px] text-[#181A20] text-center">
+                                No lecturers found
+                            </Text>
+                            <Text className="text-[13px] text-[#8F94A4] mt-1 text-center">
+                                {loadError ?? 'Pull down to refresh.'}
+                            </Text>
+                        </View>
+                    )
+                }
                 ListHeaderComponent={
                     <Animated.View
                         style={{

@@ -8,16 +8,19 @@ import React, {
 } from 'react';
 import axios from 'axios';
 import { useRole, type UserRole } from './RoleContext';
-import { authApi, type ApiUser } from '../services/apiClient';
+import { authApi, navigationRef, type ApiUser } from '../services/apiClient';
 import {
     clearAuthStorage,
     getAccessToken,
+    getDeviceUid,
     getRefreshToken,
     getUserData,
+    removeStoredPushToken,
     setAccessToken,
     setRefreshToken,
     setUserData,
 } from '../utils/secureStorage';
+import { bindDevice, type BindDeviceResult } from '../services/deviceBinding';
 
 type RegisterRole = 'student' | 'lecturer';
 
@@ -46,6 +49,8 @@ interface AuthUser {
     invite?: InviteMeta;
 }
 
+export type BindStatus = 'idle' | 'pending' | 'bound' | 'conflict';
+
 interface AuthContextType {
     isAuthenticated: boolean;
     user: AuthUser | null;
@@ -54,6 +59,7 @@ interface AuthContextType {
     isInitialising: boolean;
     pendingRegistration: PendingRegistration | null;
     pendingEmail: string | null;
+    bindStatus: BindStatus;
     signIn: (email: string, password: string) => Promise<{ ok: boolean; unverified?: boolean; message?: string }>;
     signOut: () => Promise<void>;
     startRegistration: (data: PendingRegistration) => Promise<{ ok: boolean; message?: string }>;
@@ -61,6 +67,8 @@ interface AuthContextType {
     resendVerificationCode: () => Promise<void>;
     requestPasswordReset: (email: string) => Promise<{ ok: boolean; message?: string }>;
     resetPassword: (code: string, nextPassword: string, email?: string) => Promise<{ ok: boolean; message?: string }>;
+    /** Force re-bind; used by the DeviceConflict reset flow. */
+    rebindDevice: () => Promise<BindDeviceResult>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -110,6 +118,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [pendingRegistration, setPendingRegistration] = useState<PendingRegistration | null>(null);
     const [pendingEmail, setPendingEmail] = useState<string | null>(null);
     const [passwordResetEmail, setPasswordResetEmail] = useState<string | null>(null);
+    const [bindStatus, setBindStatus] = useState<BindStatus>('idle');
+
+    // ── Device binding helper ────────────────────────────────────────────────
+    const handleBind = async (): Promise<BindDeviceResult> => {
+        setBindStatus('pending');
+        const result = await bindDevice();
+        if (result.ok) {
+            setBindStatus('bound');
+        } else if ('conflict' in result && result.conflict) {
+            setBindStatus('conflict');
+        } else {
+            // Network / non-conflict error: keep status idle so we retry later
+            setBindStatus('idle');
+        }
+        return result;
+    };
+
+    const rebindDevice = async () => handleBind();
+
+    /** Navigate to DeviceConflict and cleanly clear auth state. */
+    const handleBindConflict = async (message?: string) => {
+        await clearAuthStorage();
+        setUser(null);
+        if (navigationRef.isReady()) {
+            navigationRef.reset({
+                index: 0,
+                routes: [{ name: 'DeviceConflict', params: { message } }],
+            });
+        }
+    };
 
     // ── Restore session on app launch ─────────────────────────────────────────
     useEffect(() => {
@@ -124,10 +162,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 // in apiClient will silently renew expired tokens on the first API call.
                 const cached = await getUserData();
                 if (cached) {
-                    const parsed: ApiUser = JSON.parse(cached);
+                    const parsed = (typeof cached === 'string'
+                        ? (JSON.parse(cached) as ApiUser)
+                        : (cached as unknown as ApiUser));
                     const restored = apiUserToAuthUser(parsed);
                     setUser(restored);
                     setRole(restored.role as UserRole);
+
+                    // Silent best-effort re-bind in the background. Only acts on 409.
+                    const deviceUid = await getDeviceUid();
+                    if (deviceUid) {
+                        handleBind().then((result) => {
+                            if (!result.ok && 'conflict' in result && result.conflict) {
+                                handleBindConflict(result.message);
+                            }
+                        }).catch(() => { /* ignore */ });
+                    }
                 }
             } catch {
                 // Corrupt cache – clear and stay logged out
@@ -153,6 +203,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const nextUser = apiUserToAuthUser(data.user);
             setUser(nextUser);
             setRole(nextUser.role as UserRole);
+
+            // Bind device immediately. If conflict, sign the user back out and
+            // route to DeviceConflict so they can resolve it.
+            const bindResult = await handleBind();
+            if (!bindResult.ok && 'conflict' in bindResult && bindResult.conflict) {
+                await handleBindConflict(bindResult.message);
+                return { ok: false, message: bindResult.message };
+            }
+
             return { ok: true };
         } catch (err) {
             if (axios.isAxiosError(err) && err.response?.status === 403) {
@@ -172,11 +231,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
             await authApi.logout({ refresh_token: refreshToken ?? undefined });
         } catch { /* best-effort */ } finally {
             await clearAuthStorage();
+            // Keep deviceUid persisted so the same device re-binds on next login.
+            // Only the push token is invalidated server-side.
+            await removeStoredPushToken();
             setUser(null);
             setRole('student');
             setPendingRegistration(null);
             setPendingEmail(null);
             setPasswordResetEmail(null);
+            setBindStatus('idle');
         }
     };
 
@@ -220,6 +283,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setRole(nextUser.role as UserRole);
             setPendingRegistration(null);
             setPendingEmail(null);
+
+            // Bind device on first sign-in after registration.
+            const bindResult = await handleBind();
+            if (!bindResult.ok && 'conflict' in bindResult && bindResult.conflict) {
+                await handleBindConflict(bindResult.message);
+                return { ok: false, message: bindResult.message };
+            }
+
             return { ok: true };
         } catch (err) {
             return { ok: false, message: extractError(err, 'Invalid or expired code.') };
@@ -283,6 +354,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             isInitialising,
             pendingRegistration,
             pendingEmail,
+            bindStatus,
             signIn,
             signOut,
             startRegistration,
@@ -290,9 +362,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
             resendVerificationCode,
             requestPasswordReset,
             resetPassword,
+            rebindDevice,
         }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [user, authLoading, isInitialising, pendingRegistration, pendingEmail],
+        [user, authLoading, isInitialising, pendingRegistration, pendingEmail, bindStatus],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

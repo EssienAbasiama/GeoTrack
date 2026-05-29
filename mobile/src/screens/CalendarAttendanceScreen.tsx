@@ -1,14 +1,62 @@
+import { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { ActivityIndicator, View, Text, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CLASS_ATTENDANCE_DATA } from '../constants/calendarData';
 import type { CalendarStackParamList } from '../types/navigation';
+import { attendanceApi } from '../services/apiClient';
+import type { ApiAttendanceRecord } from '../types/api';
 
 type Props = NativeStackScreenProps<CalendarStackParamList, 'CalendarAttendance'>;
 
 export function CalendarAttendanceScreen({ route, navigation }: Props) {
-    const classItem = CLASS_ATTENDANCE_DATA.find((item) => item.id === route.params.classId);
+    const fallback = CLASS_ATTENDANCE_DATA.find((item) => item.id === route.params.classId);
+    const [history, setHistory] = useState<ApiAttendanceRecord[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const { data } = await attendanceApi.myHistory();
+                if (mounted) setHistory(data.records ?? []);
+            } catch {
+                // fall back to mock
+            } finally {
+                if (mounted) setLoading(false);
+            }
+        })();
+        return () => { mounted = false; };
+    }, []);
+
+    const classItem = useMemo(() => {
+        if (history.length === 0) return fallback;
+        // We don't have full course metadata in attendance/history; reuse mock
+        // shell with real check-in/out timestamps for the matching classId.
+        if (!fallback) return undefined;
+        const matchingRecords = history.filter((r) => String(r.session_id) === route.params.classId);
+        if (matchingRecords.length === 0) return fallback;
+        return {
+            ...fallback,
+            attendanceCount: matchingRecords.length,
+            records: matchingRecords.map((r, i) => ({
+                day: new Date(r.checked_in_at).getDate(),
+                checkIn: new Date(r.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                checkOut: '--',
+                total: '--',
+                active: i === 0,
+            })),
+        };
+    }, [history, fallback, route.params.classId]);
+
+    if (loading && !classItem) {
+        return (
+            <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9] items-center justify-center">
+                <ActivityIndicator color="#6343cc" />
+            </SafeAreaView>
+        );
+    }
 
     if (!classItem) {
         return (
