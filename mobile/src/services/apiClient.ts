@@ -1,5 +1,7 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { getAccessToken, getRefreshToken, setAccessToken, setRefreshToken, clearAuthStorage, getDeviceUid } from '../utils/secureStorage';
 import type { RootStackParamList } from '../types/navigation';
@@ -23,15 +25,70 @@ import type {
 // ─── Navigation ref (register in App.tsx: <NavigationContainer ref={navigationRef}>) ───
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
-// ─── Base URL (update for production deployment) ─────────────────────────────
-// For physical iOS/Android devices, use your machine's local network IP.
-// Run: php artisan serve --host=0.0.0.0 --port=8000
-const DEV_BASE_URL =
-    Platform.OS === 'android'
-        ? 'http://10.0.2.2:8000/api'      // Android emulator → host machine
-        : 'http://localhost:8000/api';     // iOS Simulator shares host network — use localhost
+// ─── Base URL ────────────────────────────────────────────────────────────────
+// Strategy:
+//   1. Honour EXPO_PUBLIC_API_BASE_URL if the developer set one — final override.
+//   2. In production builds, use the configured hosted API.
+//   3. Otherwise, pick a dev URL based on where the app is running:
+//        - Physical phone (Expo Go / dev client) → use Metro bundler's host IP,
+//          because that IP is, by definition, reachable from the device.
+//        - Android emulator → 10.0.2.2 (its loopback to the host machine).
+//        - iOS simulator → localhost (shares the host network stack).
+//
+// Make sure the Laravel backend is started with `--host=0.0.0.0` so it accepts
+// requests on the LAN interface (not only on 127.0.0.1).
 
-export const BASE_URL = __DEV__ ? DEV_BASE_URL : 'https://api.geotrack.edu/api';
+const DEV_PORT = 8000;
+const PROD_BASE_URL = 'https://api.geotrack.edu/api';
+
+function resolveDevHost(): string {
+    // Expo SDK 49+ exposes hostUri on expoConfig; older runtimes used
+    // manifest.debuggerHost. Both look like "192.168.1.42:8081".
+    const expoHostUri: string | undefined =
+        (Constants.expoConfig as any)?.hostUri ??
+        (Constants as any).manifest?.debuggerHost ??
+        (Constants as any).manifest2?.extra?.expoClient?.hostUri;
+
+    if (expoHostUri) {
+        const host = expoHostUri.split(':')[0];
+        if (host && host !== 'localhost' && host !== '127.0.0.1') {
+            return host;
+        }
+    }
+
+    // Fallbacks for emulator / simulator runs where there's no LAN bundler host.
+    if (Platform.OS === 'android') return '10.0.2.2';
+    return 'localhost';
+}
+
+function resolveBaseUrl(): string {
+    // Manual override wins. Set this in an .env file or app.json `extra` if the
+    // auto-detection misses (uncommon LAN setups, captive Wi-Fi, ngrok, etc.).
+    const override =
+        (process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined) ??
+        ((Constants.expoConfig?.extra as any)?.apiBaseUrl as string | undefined);
+    if (override) return override.replace(/\/$/, '');
+
+    if (!__DEV__) return PROD_BASE_URL;
+
+    // Physical device on Expo Go / dev client → always use the Metro host IP.
+    // Device.isDevice is true on real hardware, false on simulator/emulator.
+    if (Device.isDevice) {
+        const host = resolveDevHost();
+        return `http://${host}:${DEV_PORT}/api`;
+    }
+
+    // Emulator / simulator paths
+    if (Platform.OS === 'android') return `http://10.0.2.2:${DEV_PORT}/api`;
+    return `http://localhost:${DEV_PORT}/api`;
+}
+
+export const BASE_URL = resolveBaseUrl();
+
+if (__DEV__) {
+    // Helpful one-line trace so it's obvious in Metro which host the app picked.
+    console.log(`[GeoTrack] API base URL: ${BASE_URL}`);
+}
 
 // ─── Custom config fields augment ────────────────────────────────────────────
 declare module 'axios' {
