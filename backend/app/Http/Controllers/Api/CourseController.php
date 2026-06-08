@@ -253,7 +253,8 @@ class CourseController extends Controller
     public function students(Request $request, Course $course): JsonResponse
     {
         $user = $request->user();
-        if (!$user->isAdmin() && $course->lecturer_id !== $user->id) {
+        $isEnrolled = $course->enrollments()->where('user_id', $user->id)->exists();
+        if (!$user->isAdmin() && $course->lecturer_id !== $user->id && !$isEnrolled) {
             return response()->json([
                 'message' => 'You are not authorised to view this roster.',
             ], 403);

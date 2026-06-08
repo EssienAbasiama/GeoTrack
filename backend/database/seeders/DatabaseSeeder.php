@@ -47,6 +47,18 @@ class DatabaseSeeder extends Seeder
             );
         });
 
+        // Head of Class (HOC) — a student-level user with course-oversight role.
+        $hoc = User::query()->updateOrCreate(
+            ['matric_no' => 'FUNAAB/CSC/2022/HOC'],
+            [
+                'name' => 'Kemi Adesanya',
+                'email' => 'kemi.adesanya@students.geotrack.edu',
+                'password' => 'Password123!',
+                'role' => 'hoc',
+                'email_verified_at' => now(),
+            ]
+        );
+
         // Students
         $studentSeeds = [
             ['name' => 'Chika Eze', 'matric_no' => 'FUNAAB/CSC/2022/001'],
@@ -114,6 +126,14 @@ class DatabaseSeeder extends Seeder
                     ['enrolled_at' => now()]
                 );
             }
+        }
+
+        // Enroll the HOC in every course so they can oversee all of them.
+        foreach ($courses as $course) {
+            CourseEnrollment::query()->updateOrCreate(
+                ['course_id' => $course->id, 'user_id' => $hoc->id],
+                ['enrolled_at' => now()]
+            );
         }
 
         // Demo active session for the first course.

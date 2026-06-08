@@ -76,7 +76,7 @@ export function RootNavigator() {
                  * Animation configuration for stack transitions
                  * Disabled for splash/onboarding to provide instant transitions
                  */
-                animationEnabled: false,
+                animation: 'none',
             }}
             initialRouteName="Splash"
         >
@@ -84,63 +84,63 @@ export function RootNavigator() {
                 name="Splash"
                 component={SplashWrapper}
                 options={{
-                    animationEnabled: false,
+                    animation: 'none',
                 }}
             />
             <Stack.Screen
                 name="Onboarding"
                 component={OnboardingWrapper}
                 options={{
-                    animationEnabled: false,
+                    animation: 'none',
                 }}
             />
             <Stack.Screen
                 name="AuthLanding"
                 component={AuthLandingScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="Login"
                 component={LoginScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="Register"
                 component={RegisterScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="VerifyEmail"
                 component={VerifyEmailScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="ForgotPassword"
                 component={ForgotPasswordScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="ResetPassword"
                 component={ResetPasswordScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="MainTabs"
                 component={MainTabsNavigator}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
                 listeners={({ navigation }) => ({
                     focus: () => {
@@ -154,21 +154,21 @@ export function RootNavigator() {
                 name="CheckIn"
                 component={CheckInScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="ClassDetail"
                 component={ClassDetailScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="Navigation"
                 component={NavigationScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                     presentation: 'fullScreenModal',
                 }}
             />
@@ -176,14 +176,14 @@ export function RootNavigator() {
                 name="StudentDetail"
                 component={StudentDetailScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="DeviceConflict"
                 component={DeviceConflictScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                     gestureEnabled: false,
                 }}
             />
@@ -191,14 +191,14 @@ export function RootNavigator() {
                 name="FaceEnrollment"
                 component={FaceEnrollmentScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
             <Stack.Screen
                 name="PresenceCheck"
                 component={PresenceCheckScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                     presentation: 'modal',
                     gestureEnabled: false,
                 }}
@@ -207,7 +207,7 @@ export function RootNavigator() {
                 name="LecturerSession"
                 component={LecturerSessionScreen}
                 options={{
-                    animationEnabled: true,
+                    animation: 'default',
                 }}
             />
         </Stack.Navigator>

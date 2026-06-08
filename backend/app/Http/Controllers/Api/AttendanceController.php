@@ -163,7 +163,7 @@ class AttendanceController extends Controller
     public function myHistory(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $records = AttendanceRecord::query()
+        $paginator = AttendanceRecord::query()
             ->with([
                 'session:id,course_id,starts_at,ends_at,mode',
                 'session.course:id,code,title',
@@ -174,7 +174,15 @@ class AttendanceController extends Controller
 
         return response()->json([
             'message' => 'Attendance history retrieved.',
-            'data' => ['records' => $records],
+            'data' => [
+                'records' => $paginator->items(),
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
+                ],
+            ],
         ]);
     }
 }

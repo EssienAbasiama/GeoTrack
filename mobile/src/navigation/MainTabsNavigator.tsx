@@ -193,7 +193,7 @@ function TabBarItem({
         }).start();
     };
 
-    const iconName = isFocused ? tabConfig.focusedIcon : tabConfig.unfocusedIcon;
+    const iconName = (isFocused ? tabConfig.focusedIcon : tabConfig.unfocusedIcon) as keyof typeof Ionicons.glyphMap;
 
     return (
         <Animated.View

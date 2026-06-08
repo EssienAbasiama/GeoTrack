@@ -486,7 +486,7 @@ export function NavigationScreen() {
             </MapView>
 
             {/* Header */}
-            <SafeAreaView edges={['top']} style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
                 <View style={styles.headerContent}>
                     <Pressable
                         onPress={() => {
@@ -514,7 +514,7 @@ export function NavigationScreen() {
                         <MaterialIcons name="zoom-out-map" size={22} color="#5A5D6B" />
                     </Pressable>
                 </View>
-            </SafeAreaView>
+            </View>
 
             {/* Recenter Button */}
             {!isTracking && (

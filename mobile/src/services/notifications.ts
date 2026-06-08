@@ -66,25 +66,44 @@ export async function requestNotificationPermissions(): Promise<boolean> {
  * Get the Expo push token for this device
  * @returns Push token string or null
  */
+let pushTokenWarned = false;
+
 export async function getPushToken(): Promise<string | null> {
     if (pushToken) return pushToken;
 
     if (!Device.isDevice) {
-        console.log('Push notifications require a physical device');
+        if (!pushTokenWarned) {
+            console.log('[GeoTrack] Skipping push token: not a physical device.');
+            pushTokenWarned = true;
+        }
+        return null;
+    }
+
+    const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        (Constants as any)?.easConfig?.projectId ??
+        process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+
+    if (!projectId) {
+        if (!pushTokenWarned) {
+            console.log(
+                '[GeoTrack] Skipping push token: no EAS projectId configured. ' +
+                'Set "expo.extra.eas.projectId" in app.json (or run `eas init`) to enable remote push notifications.'
+            );
+            pushTokenWarned = true;
+        }
         return null;
     }
 
     try {
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        
-        const token = await Notifications.getExpoPushTokenAsync({
-            projectId: projectId,
-        });
-        
+        const token = await Notifications.getExpoPushTokenAsync({ projectId });
         pushToken = token.data;
         return pushToken;
     } catch (error) {
-        console.error('Error getting push token:', error);
+        if (!pushTokenWarned) {
+            console.warn('[GeoTrack] Push token unavailable:', (error as Error)?.message ?? error);
+            pushTokenWarned = true;
+        }
         return null;
     }
 }

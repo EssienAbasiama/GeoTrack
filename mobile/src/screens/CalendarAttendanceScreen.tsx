@@ -20,7 +20,12 @@ export function CalendarAttendanceScreen({ route, navigation }: Props) {
         (async () => {
             try {
                 const { data } = await attendanceApi.myHistory();
-                if (mounted) setHistory(data.records ?? []);
+                const records = Array.isArray(data?.records)
+                    ? data.records
+                    : Array.isArray((data?.records as any)?.data)
+                        ? (data.records as any).data
+                        : [];
+                if (mounted) setHistory(records);
             } catch {
                 // fall back to mock
             } finally {
@@ -31,11 +36,12 @@ export function CalendarAttendanceScreen({ route, navigation }: Props) {
     }, []);
 
     const classItem = useMemo(() => {
-        if (history.length === 0) return fallback;
+        const safeHistory = Array.isArray(history) ? history : [];
+        if (safeHistory.length === 0) return fallback;
         // We don't have full course metadata in attendance/history; reuse mock
         // shell with real check-in/out timestamps for the matching classId.
         if (!fallback) return undefined;
-        const matchingRecords = history.filter((r) => String(r.session_id) === route.params.classId);
+        const matchingRecords = safeHistory.filter((r) => String(r.session_id) === route.params.classId);
         if (matchingRecords.length === 0) return fallback;
         return {
             ...fallback,

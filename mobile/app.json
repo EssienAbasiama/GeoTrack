@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "GeoTrack",
-    "slug": "GeoTrack",
+    "slug": "geotrack",
+    "owner": "devabasiama",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Images/Logo.png",
@@ -32,7 +33,13 @@
           "locationWhenInUsePermission": "GeoTrack uses your location to generate a check-in route to your class."
         }
       ],
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4b5df7a3-b4a5-4f7e-8700-9c10ac914081"
+      }
+    }
   }
 }
