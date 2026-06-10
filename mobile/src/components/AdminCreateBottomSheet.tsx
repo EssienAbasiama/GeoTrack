@@ -1,7 +1,9 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Keyboard, Modal, Pressable, ScrollView, Text, TextInput, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, Switch, Text, TextInput, View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
+import { courseApi } from '../services/apiClient';
 import {
     BottomSheetModal,
     BottomSheetBackdrop,
@@ -21,7 +23,7 @@ const TIME_OPTIONS = [
     '19:00', '19:30', '20:00', '20:30', '21:00',
 ];
 
-type CreateMode = 'select' | 'class' | 'lecturer';
+type CreateMode = 'select' | 'class' | 'lecturer' | 'boundary';
 type PickerType = 'day' | 'startTime' | 'endTime' | null;
 
 export interface AdminCreateBottomSheetRef {
@@ -31,13 +33,15 @@ export interface AdminCreateBottomSheetRef {
 
 interface AdminCreateBottomSheetProps {
     onClose?: () => void;
+    onSuccess?: () => void;
 }
 
 export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, AdminCreateBottomSheetProps>(
-    ({ onClose }, ref) => {
+    ({ onClose, onSuccess }, ref) => {
         const bottomSheetRef = useRef<BottomSheetModal>(null);
         const insets = useSafeAreaInsets();
         const [mode, setMode] = useState<CreateMode>('select');
+        const [submitting, setSubmitting] = useState(false);
 
         // Form states for class
         const [classCode, setClassCode] = useState('');
@@ -51,6 +55,9 @@ export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, Admi
         const [lecturerName, setLecturerName] = useState('');
         const [lecturerEmail, setLecturerEmail] = useState('');
         const [department, setDepartment] = useState('');
+
+        // Boundary step state
+        const [enableBoundary, setEnableBoundary] = useState(false);
 
         // Picker state
         const [activePicker, setActivePicker] = useState<PickerType>(null);
@@ -98,14 +105,44 @@ export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, Admi
         };
 
         const handleCreateClass = () => {
-            console.log('Creating class:', { classCode, className, venue, day, startTime, endTime });
-            setClassCode('');
-            setClassName('');
-            setVenue('');
-            setDay('');
-            setStartTime('');
-            setEndTime('');
-            handleClose();
+            Keyboard.dismiss();
+            setMode('boundary');
+        };
+
+        const handleFinishCreateClass = async () => {
+            if (!classCode.trim() || !className.trim()) {
+                Toast.show({ type: 'error', text1: 'Class code and name are required.', position: 'bottom' });
+                return;
+            }
+
+            Keyboard.dismiss();
+            setSubmitting(true);
+            try {
+                await courseApi.create({
+                    code: classCode.trim(),
+                    title: className.trim(),
+                    venue: venue.trim() || undefined,
+                    day: day || undefined,
+                    start_time: startTime || undefined,
+                    end_time: endTime || undefined,
+                });
+                Toast.show({ type: 'success', text1: 'Class created successfully.', position: 'bottom' });
+                setClassCode('');
+                setClassName('');
+                setVenue('');
+                setDay('');
+                setStartTime('');
+                setEndTime('');
+                setEnableBoundary(false);
+                setMode('select');
+                bottomSheetRef.current?.dismiss();
+                onSuccess?.();
+            } catch (err) {
+                const msg = (err as any)?.response?.data?.message ?? 'Could not create class. Please try again.';
+                Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+            } finally {
+                setSubmitting(false);
+            }
         };
 
         const handleCreateLecturer = () => {
@@ -322,6 +359,67 @@ export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, Admi
             </View>
         );
 
+        const renderBoundaryStep = () => (
+            <View style={styles.contentWrapper}>
+                <View className="flex-row items-center mb-4">
+                    <Pressable
+                        onPress={() => setMode('class')}
+                        className="h-9 w-9 items-center justify-center rounded-full bg-[#E8EAF1] mr-3"
+                    >
+                        <Ionicons name="arrow-back" size={18} color="#5A5D6B" />
+                    </Pressable>
+                    <Text className="font-heading text-[22px] text-[#181A20]">Bounded Area</Text>
+                </View>
+
+                <Text className="text-[14px] text-[#8F94A4] mb-6 leading-[22px]">
+                    Should students be required to be within a specific location to check in to this class?
+                </Text>
+
+                <View className="mb-4 flex-row items-center justify-between rounded-[16px] border border-[#E8EAF1] px-4 py-4 bg-white">
+                    <View className="flex-row items-center flex-1 mr-3">
+                        <View className="h-10 w-10 items-center justify-center rounded-[12px] bg-[#F0EDFC]">
+                            <Ionicons name="location" size={20} color={PRIMARY_COLOR} />
+                        </View>
+                        <View className="ml-3 flex-1">
+                            <Text className="font-medium text-[15px] text-[#232736]">Require Bounded Area</Text>
+                            <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                Enforce a geo-fence for check-in
+                            </Text>
+                        </View>
+                    </View>
+                    <Switch
+                        value={enableBoundary}
+                        onValueChange={setEnableBoundary}
+                        trackColor={{ false: '#D6D9E3', true: PRIMARY_COLOR }}
+                        thumbColor="#FFFFFF"
+                    />
+                </View>
+
+                {enableBoundary && (
+                    <View className="mb-4 rounded-[16px] bg-[#F0EDFC] px-4 py-4 border border-[#6343cc]/20">
+                        <View className="flex-row items-start">
+                            <Ionicons name="information-circle" size={18} color={PRIMARY_COLOR} style={{ marginTop: 1 }} />
+                            <Text className="ml-2 text-[13px] text-[#6343cc] flex-1 leading-[20px]">
+                                After creating the class, open the class detail screen to configure the exact GPS boundary (radius or custom perimeter).
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
+                <Pressable
+                    onPress={handleFinishCreateClass}
+                    disabled={submitting}
+                    className="mt-4 h-14 items-center justify-center rounded-[14px] bg-[#6343cc]"
+                    style={{ opacity: submitting ? 0.7 : 1 }}
+                >
+                    {submitting
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text className="font-medium text-[16px] text-white">Create Class</Text>
+                    }
+                </Pressable>
+            </View>
+        );
+
         const getPickerTitle = () => {
             switch (activePicker) {
                 case 'day': return 'Select Day';
@@ -450,6 +548,7 @@ export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, Admi
                         {mode === 'select' && renderSelectMode()}
                         {mode === 'class' && renderClassForm()}
                         {mode === 'lecturer' && renderLecturerForm()}
+                        {mode === 'boundary' && renderBoundaryStep()}
                     </BottomSheetScrollView>
                 </BottomSheetModal>
                 {renderPickerModal()}

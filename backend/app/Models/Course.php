@@ -19,6 +19,10 @@ class Course extends Model
         'description',
         'department',
         'level',
+        'venue',
+        'day',
+        'start_time',
+        'end_time',
         'lecturer_id',
         'created_by',
     ];

@@ -234,7 +234,7 @@ function apiCourseToClassEntity(c: ApiCourse): ClassEntity {
 }
 
 export function ClassesScreen() {
-    const { isSuperAdmin, isHOC, role } = useRole();
+    const { isSuperAdmin, isHOC, isLecturer, role } = useRole();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const [searchVisible, setSearchVisible] = useState(false);
@@ -488,10 +488,10 @@ export function ClassesScreen() {
                 )}
             </Animated.View>
 
-            {/* Floating Action Button - Only for HOC and SuperAdmin */}
-            {(isHOC || isSuperAdmin) && (
+            {/* Floating Action Button - HOC, SuperAdmin and Lecturers can create classes */}
+            {(isHOC || isSuperAdmin || isLecturer) && (
                 <Pressable
-                    onPress={() => createSheetRef.current?.open('class')}
+                    onPress={() => createSheetRef.current?.open(isLecturer ? 'class' : 'select')}
                     style={{ position: 'absolute', bottom: 100, right: 20 }}
                 >
                     <Animated.View
@@ -515,7 +515,7 @@ export function ClassesScreen() {
                 </Pressable>
             )}
 
-            <AdminCreateBottomSheet ref={createSheetRef} />
+            <AdminCreateBottomSheet ref={createSheetRef} onSuccess={loadClasses} />
         </SafeAreaView>
     );
 }

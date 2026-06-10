@@ -1,4 +1,4 @@
-﻿import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import {
     forwardRef,
     useCallback,
@@ -43,7 +43,6 @@ const DANGER = '#EF5350';
 const BG = '#F6F6F9';
 
 const RADIUS_OPTIONS = [30, 50, 100, 150, 200];
-const WALK_MIN_DISTANCE_M = 1; // 1 m — tiny areas need dense points
 
 type Page = 'picker' | 'geofence' | 'manual';
 
@@ -80,28 +79,14 @@ function calcCenter(coords: BoundaryCoordinate[]): BoundaryCoordinate {
     return { latitude: s.latitude / coords.length, longitude: s.longitude / coords.length };
 }
 
-function haversine(a: BoundaryCoordinate, b: BoundaryCoordinate): number {
-    const R = 6_371_000;
-    const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-    const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
-    const x =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos((a.latitude * Math.PI) / 180) *
-        Math.cos((b.latitude * Math.PI) / 180) *
-        Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
-
 export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Props>(
     ({ classCode, onSaveLocation, existingLocation }, ref) => {
         const bsRef = useRef<BottomSheetModal>(null);
         const mapRef = useRef<MapView>(null);
         const insets = useSafeAreaInsets();
         const { height: WINDOW_H } = useWindowDimensions();
-        // Explicit map height: 96% sheet - handle (~28px) - bottom panel (~142px) - safe area bottom
         const mapAreaHeight = WINDOW_H * 0.96 - 28 - 142 - Math.max(insets.bottom, 16);
         const pulseAnim = useRef(new Animated.Value(1)).current;
-        const walkSubRef = useRef<Location.LocationSubscription | null>(null);
 
         const [page, setPage] = useState<Page>('picker');
 
@@ -116,16 +101,16 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         const [circleCenter, setCircleCenter] = useState<BoundaryCoordinate | null>(null);
         const [radius, setRadius] = useState(50);
 
-        const [walkCoords, setWalkCoords] = useState<BoundaryCoordinate[]>([]);
-        const [livePos, setLivePos] = useState<BoundaryCoordinate | null>(null);
-        const [isWalking, setIsWalking] = useState(false);
-        const [totalWalkDistance, setTotalWalkDistance] = useState(0);
-        const lastWalkPoint = useRef<BoundaryCoordinate | null>(null);
+        // Points dropped by the user standing at each corner
+        const [points, setPoints] = useState<BoundaryCoordinate[]>([]);
+        const [isSampling, setIsSampling] = useState(false);
+        const [samplingStep, setSamplingStep] = useState(0); // 1-3 while reading
 
         const snapPoints = useMemo(() => ['72%', '96%'], []);
 
+        // Pulse while sampling a new GPS point
         useEffect(() => {
-            if (isWalking) {
+            if (isSampling) {
                 Animated.loop(
                     Animated.sequence([
                         Animated.timing(pulseAnim, { toValue: 1.1, duration: 700, useNativeDriver: true }),
@@ -136,21 +121,15 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                 pulseAnim.stopAnimation();
                 pulseAnim.setValue(1);
             }
-        }, [isWalking]);
-
-        useEffect(() => () => { walkSubRef.current?.remove(); }, []);
+        }, [isSampling]);
 
         const resetAll = () => {
             setLocationName('');
             setCircleCenter(null);
             setRadius(50);
-            setWalkCoords([]);
-            setLivePos(null);
-            setIsWalking(false);
-            setTotalWalkDistance(0);
-            lastWalkPoint.current = null;
-            walkSubRef.current?.remove();
-            walkSubRef.current = null;
+            setPoints([]);
+            setIsSampling(false);
+            setSamplingStep(0);
         };
 
         const goToManual = () => {
@@ -159,7 +138,8 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         };
 
         const goToPicker = () => {
-            stopWalking();
+            setIsSampling(false);
+            setSamplingStep(0);
             setPage('picker');
             bsRef.current?.snapToIndex(0);
         };
@@ -167,12 +147,10 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         useImperativeHandle(ref, () => ({
             open: () => {
                 resetAll();
-                // Pre-populate fields from existing location but always show the picker
-                // so the user can choose between Geofence Radius and Perimeter Walk
                 if (existingLocation) {
                     setLocationName(existingLocation.name || '');
                     if (existingLocation.polygonCoords?.length) {
-                        setWalkCoords(existingLocation.polygonCoords);
+                        setPoints(existingLocation.polygonCoords);
                     } else {
                         setCircleCenter({ latitude: existingLocation.latitude, longitude: existingLocation.longitude });
                         setRadius(existingLocation.radius ?? 50);
@@ -203,50 +181,48 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
             }
         };
 
-        const startWalking = async () => {
-            const ok = await ensureLocationPermission(() => { });
+        /**
+         * Stand at a corner, press this — it takes 3 GPS readings 1 s apart
+         * and keeps the one with the smallest accuracy radius (most precise).
+         */
+        const dropPoint = async () => {
+            const ok = await ensureLocationPermission(() => {});
             if (!ok) return;
-            lastWalkPoint.current = null;
-            const sub = await Location.watchPositionAsync(
-                {
-                    accuracy: Location.Accuracy.BestForNavigation,
-                    timeInterval: 400,      // update every 400 ms for a live line feel
-                    distanceInterval: 0,    // no distance gate — we gate manually below
-                },
-                (loc) => {
-                    const pt: BoundaryCoordinate = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-
-                    // Always update live position so the line tip follows the user in real-time
-                    setLivePos(pt);
-
-                    // Only record a boundary point when moved at least WALK_MIN_DISTANCE_M
-                    const distFromLast = lastWalkPoint.current ? haversine(lastWalkPoint.current, pt) : Infinity;
-                    if (distFromLast >= WALK_MIN_DISTANCE_M) {
-                        setWalkCoords(prev => [...prev, pt]);
-                        if (lastWalkPoint.current) {
-                            setTotalWalkDistance(prev => prev + distFromLast);
-                        }
-                        lastWalkPoint.current = pt;
-                    }
-
-                    // Keep map tightly zoomed in on the user (~30 m view) while walking
-                    mapRef.current?.animateToRegion({
-                        latitude: loc.coords.latitude,
-                        longitude: loc.coords.longitude,
-                        latitudeDelta: 0.0003,
-                        longitudeDelta: 0.0003,
-                    }, 200);
-                },
-            );
-            walkSubRef.current = sub;
-            setIsWalking(true);
+            setIsSampling(true);
+            try {
+                const samples: Location.LocationObject[] = [];
+                for (let i = 0; i < 3; i++) {
+                    setSamplingStep(i + 1);
+                    const loc = await Location.getCurrentPositionAsync({
+                        accuracy: Location.Accuracy.BestForNavigation,
+                    });
+                    samples.push(loc);
+                    if (i < 2) await new Promise<void>((r) => setTimeout(r, 1_000));
+                }
+                const best = samples.reduce((a, b) =>
+                    (a.coords.accuracy ?? Infinity) <= (b.coords.accuracy ?? Infinity) ? a : b,
+                );
+                const pt: BoundaryCoordinate = {
+                    latitude: best.coords.latitude,
+                    longitude: best.coords.longitude,
+                };
+                setPoints((prev) => [...prev, pt]);
+                mapRef.current?.animateToRegion({
+                    latitude: pt.latitude,
+                    longitude: pt.longitude,
+                    latitudeDelta: 0.0005,
+                    longitudeDelta: 0.0005,
+                }, 300);
+            } catch {
+                Toast.show({ type: 'error', text1: 'Could not get a precise fix. Move to an open area and try again.', position: 'bottom' });
+            } finally {
+                setIsSampling(false);
+                setSamplingStep(0);
+            }
         };
 
-        const stopWalking = () => {
-            walkSubRef.current?.remove();
-            walkSubRef.current = null;
-            setIsWalking(false);
-        };
+        const undo = () => setPoints((prev) => prev.slice(0, -1));
+        const clear = () => setPoints([]);
 
         const saveGeofence = () => {
             if (!locationName.trim()) {
@@ -265,20 +241,19 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
             }, 300);
         };
 
-        const saveManual = () => {
+        const savePoints = () => {
             if (!locationName.trim()) {
                 Toast.show({ type: 'error', text1: 'Please enter a location name', position: 'bottom' });
                 return;
             }
-            if (walkCoords.length < 3) {
-                Toast.show({ type: 'error', text1: 'Walk at least 3 GPS points to form a boundary', position: 'bottom' });
+            if (points.length < 3) {
+                Toast.show({ type: 'error', text1: 'Drop at least 3 points to form a boundary', position: 'bottom' });
                 return;
             }
-            if (isWalking) stopWalking();
             setIsLoading(true);
-            const center = calcCenter(walkCoords);
+            const center = calcCenter(points);
             setTimeout(() => {
-                onSaveLocation({ ...center, polygonCoords: walkCoords, name: locationName.trim() });
+                onSaveLocation({ ...center, polygonCoords: points, name: locationName.trim() });
                 setIsLoading(false);
                 bsRef.current?.dismiss();
             }, 300);
@@ -291,16 +266,18 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
             [],
         );
 
-        const isWalkReady = walkCoords.length >= 3;
-        const canSaveManual = locationName.trim().length > 0 && isWalkReady;
+        const isPointsReady = points.length >= 3;
+        const canSavePoints = locationName.trim().length > 0 && isPointsReady;
         const canSaveGeo = locationName.trim().length > 0 && circleCenter !== null;
 
-        const walkStatusColor = isWalkReady ? SUCCESS : isWalking ? WARNING : '#BCBDC0';
-        const walkStatusText = isWalking
-            ? `Recording\u2026 ${walkCoords.length} pt${walkCoords.length !== 1 ? 's' : ''} \u00b7 ${totalWalkDistance.toFixed(0)} m`
-            : isWalkReady
-                ? `${walkCoords.length} pts \u00b7 ${totalWalkDistance.toFixed(0)} m \u00b7 Boundary ready \u2713`
-                : 'Press Start to walk the perimeter';
+        const pointStatusColor = isPointsReady ? SUCCESS : isSampling ? WARNING : '#BCBDC0';
+        const pointStatusText = isSampling
+            ? 'Sampling… getting best reading'
+            : isPointsReady
+                ? `${points.length} point${points.length !== 1 ? 's' : ''} · Boundary ready ✓`
+                : `${points.length} point${points.length !== 1 ? 's' : ''} · Need ${Math.max(0, 3 - points.length)} more`;
+
+        const polyCoords = points.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
 
         return (
             <BottomSheetModal
@@ -316,7 +293,6 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                 {/* ═══════════════════ PICKER ═══════════════════ */}
                 {page === 'picker' && (
                     <BottomSheetScrollView contentContainerStyle={styles.scrollContent}>
-                        {/* Header */}
                         <View style={styles.row}>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.title}>Set Class Location</Text>
@@ -327,7 +303,6 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                             </Pressable>
                         </View>
 
-                        {/* Subtitle prompt */}
                         <Text style={styles.pickerPrompt}>
                             Choose how you want to define the attendance boundary for this class.
                         </Text>
@@ -337,7 +312,6 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                             onPress={() => setPage('geofence')}
                             style={({ pressed }) => [styles.bigCard, pressed && styles.bigCardPressed]}
                         >
-                            {/* Coloured header band */}
                             <View style={[styles.bigCardBand, { backgroundColor: '#EEF2FF' }]}>
                                 <View style={styles.bigCardIconWrap}>
                                     <Ionicons name="radio-button-on" size={36} color={PRIMARY} />
@@ -346,8 +320,6 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                     <Text style={styles.bigCardBadgeText}>Quick Setup</Text>
                                 </View>
                             </View>
-
-                            {/* Body */}
                             <View style={styles.bigCardBody}>
                                 <Text style={styles.bigCardTitle}>Geofence Radius</Text>
                                 <Text style={styles.bigCardDesc}>
@@ -365,37 +337,33 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                     </View>
                                 </View>
                             </View>
-
                             <View style={styles.bigCardArrow}>
                                 <Ionicons name="arrow-forward" size={18} color={PRIMARY} />
                             </View>
                         </Pressable>
 
-                        {/* ── Perimeter Walk Card ── */}
+                        {/* ── Drop Points Card ── */}
                         <Pressable
                             onPress={goToManual}
                             style={({ pressed }) => [styles.bigCard, pressed && styles.bigCardPressed]}
                         >
-                            {/* Coloured header band */}
                             <View style={[styles.bigCardBand, { backgroundColor: '#F0FDF4' }]}>
                                 <View style={styles.bigCardIconWrap}>
-                                    <MaterialIcons name="directions-walk" size={36} color={SUCCESS} />
+                                    <Ionicons name="location" size={36} color={SUCCESS} />
                                 </View>
                                 <View style={[styles.bigCardBadge, { backgroundColor: '#DCFCE7' }]}>
                                     <Text style={[styles.bigCardBadgeText, { color: '#166534' }]}>Recommended</Text>
                                 </View>
                             </View>
-
-                            {/* Body */}
                             <View style={styles.bigCardBody}>
-                                <Text style={styles.bigCardTitle}>Perimeter Walk</Text>
+                                <Text style={styles.bigCardTitle}>Drop Points</Text>
                                 <Text style={styles.bigCardDesc}>
-                                    Walk the boundary of your venue while GPS traces your path automatically.
-                                    Ideal for labs, open fields, and irregular spaces.
+                                    Stand at each corner of your venue and drop a GPS point. The app takes
+                                    3 readings and picks the most precise one. Ideal for labs, halls, and irregular spaces.
                                 </Text>
                                 <View style={styles.bigCardTags}>
                                     <View style={[styles.bigCardTag, { backgroundColor: '#F0FDF4' }]}>
-                                        <MaterialIcons name="precision-manufacturing" size={11} color={SUCCESS} />
+                                        <Ionicons name="checkmark-circle" size={11} color={SUCCESS} />
                                         <Text style={[styles.bigCardTagText, { color: '#166534' }]}>Precise</Text>
                                     </View>
                                     <View style={[styles.bigCardTag, { backgroundColor: '#F0FDF4' }]}>
@@ -404,7 +372,6 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                     </View>
                                 </View>
                             </View>
-
                             <View style={[styles.bigCardArrow, { backgroundColor: '#F0FDF4' }]}>
                                 <Ionicons name="arrow-forward" size={18} color={SUCCESS} />
                             </View>
@@ -527,7 +494,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                     </BottomSheetScrollView>
                 )}
 
-                {/* ═══════════════ PERIMETER WALK MAP ═══════════════ */}
+                {/* ═══════════════ DROP POINTS MAP ═══════════════ */}
                 {page === 'manual' && (
                     <BottomSheetView style={styles.mapShell}>
                         <View style={[styles.mapArea, { height: mapAreaHeight }]}>
@@ -540,47 +507,37 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                 showsMyLocationButton={false}
                                 mapType="satellite"
                             >
-                                {/* First recorded point marker */}
-                                {walkCoords.length > 0 && (
+                                {/* Numbered markers at each dropped point */}
+                                {polyCoords.map((coord, i) => (
                                     <Marker
-                                        key="start"
-                                        coordinate={walkCoords[0]}
+                                        key={i}
+                                        coordinate={coord}
                                         anchor={{ x: 0.5, y: 0.5 }}
                                         tracksViewChanges={false}
                                     >
-                                        <View style={styles.walkDotFirst} />
+                                        <View style={[styles.vertex, i === 0 && styles.vertexFirst]}>
+                                            <Text style={styles.vertexText}>{i + 1}</Text>
+                                        </View>
                                     </Marker>
+                                ))}
+
+                                {/* Dashed connecting line between points */}
+                                {polyCoords.length >= 2 && (
+                                    <Polyline
+                                        coordinates={polyCoords}
+                                        strokeColor="rgba(99,67,204,0.9)"
+                                        strokeWidth={2}
+                                        lineDashPattern={[8, 4]}
+                                    />
                                 )}
 
-                                {/* Path walked so far + live tip extending to current position */}
-                                {(walkCoords.length >= 1 || livePos) && (
-                                    <>
-                                        {/* Glow / shadow line behind the main line */}
-                                        <Polyline
-                                            coordinates={livePos ? [...walkCoords, livePos] : walkCoords}
-                                            strokeColor="rgba(255,255,255,0.35)"
-                                            strokeWidth={7}
-                                            lineCap="round"
-                                            lineJoin="round"
-                                        />
-                                        {/* Main path line */}
-                                        <Polyline
-                                            coordinates={livePos ? [...walkCoords, livePos] : walkCoords}
-                                            strokeColor="rgba(99,67,204,1)"
-                                            strokeWidth={4}
-                                            lineCap="round"
-                                            lineJoin="round"
-                                        />
-                                    </>
-                                )}
-
-                                {/* Closing line back to start once ≥3 points */}
-                                {walkCoords.length >= 3 && (
+                                {/* Filled polygon once ≥3 points */}
+                                {polyCoords.length >= 3 && (
                                     <Polygon
-                                        coordinates={walkCoords}
+                                        coordinates={polyCoords}
                                         fillColor="rgba(99,67,204,0.18)"
-                                        strokeColor="transparent"
-                                        strokeWidth={0}
+                                        strokeColor="rgba(99,67,204,0.9)"
+                                        strokeWidth={2.5}
                                     />
                                 )}
                             </MapView>
@@ -591,7 +548,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                     <Ionicons name="arrow-back" size={18} color="#fff" />
                                 </Pressable>
                                 <View style={{ flex: 1, marginHorizontal: 10 }}>
-                                    <Text style={styles.mapHeaderTitle}>Perimeter Walk</Text>
+                                    <Text style={styles.mapHeaderTitle}>Drop Points</Text>
                                     <Text style={styles.mapHeaderSub}>{classCode}</Text>
                                 </View>
                                 <Pressable onPress={() => bsRef.current?.dismiss()} style={styles.mapNavBtn}>
@@ -601,53 +558,85 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
 
                             {/* Status pill */}
                             <View style={styles.statusPill}>
-                                <View style={[styles.statusDot, { backgroundColor: walkStatusColor }]} />
-                                <Text style={styles.statusText}>{walkStatusText}</Text>
+                                <View style={[styles.statusDot, { backgroundColor: pointStatusColor }]} />
+                                <Text style={styles.statusText}>{pointStatusText}</Text>
                             </View>
 
-                            {/* Hint banner */}
-                            {isWalking && (
-                                <View style={[styles.hintBanner, { backgroundColor: SUCCESS + 'DD' }]}>
-                                    <MaterialIcons name="directions-walk" size={14} color="#fff" />
+                            {/* Instruction / progress banner */}
+                            {!isPointsReady && !isSampling && (
+                                <View style={[styles.hintBanner, { backgroundColor: 'rgba(0,0,0,0.60)' }]}>
+                                    <Ionicons name="location" size={14} color="#fff" />
                                     <Text style={styles.hintText}>
-                                        Walk the boundary area \u00b7 tap Stop when you've enclosed the space
+                                        Stand at each corner of the venue and press Drop Point
                                     </Text>
                                 </View>
                             )}
-                            {!isWalking && isWalkReady && (
+                            {isSampling && (
+                                <View style={[styles.hintBanner, styles.hintBannerTall, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
+                                    <Text style={styles.hintText}>
+                                        Hold still · Reading {samplingStep} of 3
+                                    </Text>
+                                    <View style={styles.progressTrack}>
+                                        {[1, 2, 3].map((step) => (
+                                            <View
+                                                key={step}
+                                                style={[
+                                                    styles.progressSegment,
+                                                    step <= samplingStep
+                                                        ? styles.progressSegmentDone
+                                                        : styles.progressSegmentPending,
+                                                ]}
+                                            />
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+                            {isPointsReady && !isSampling && (
                                 <View style={[styles.hintBanner, { backgroundColor: 'rgba(34,197,94,0.85)' }]}>
                                     <Ionicons name="checkmark-circle-outline" size={14} color="#fff" />
-                                    <Text style={styles.hintText}>Boundary recorded \u00b7 enter a name below and tap Save</Text>
+                                    <Text style={styles.hintText}>
+                                        Boundary ready · enter a name below and tap Save
+                                    </Text>
                                 </View>
                             )}
 
-                            {/* Walk controls */}
+                            {/* Controls */}
                             <View style={styles.walkControls}>
-                                {!isWalking ? (
-                                    <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                                        <Pressable
-                                            onPress={startWalking}
-                                            style={[styles.walkBtn, isWalkReady ? { backgroundColor: PRIMARY } : styles.walkBtnStart]}
-                                        >
-                                            <MaterialIcons name="directions-walk" size={18} color="#fff" />
-                                            <Text style={styles.walkBtnText}>{walkCoords.length > 0 ? 'Resume Walk' : 'Start Walk'}</Text>
-                                        </Pressable>
-                                    </Animated.View>
-                                ) : (
-                                    <Pressable onPress={stopWalking} style={[styles.walkBtn, { backgroundColor: DANGER }]}>
-                                        <Ionicons name="stop-circle-outline" size={18} color="#fff" />
-                                        <Text style={styles.walkBtnText}>Stop</Text>
+                                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                                    <Pressable
+                                        onPress={dropPoint}
+                                        disabled={isSampling}
+                                        style={[styles.walkBtn, isSampling ? { backgroundColor: WARNING } : { backgroundColor: SUCCESS }]}
+                                    >
+                                        <Ionicons name="location" size={18} color="#fff" />
+                                        <Text style={styles.walkBtnText}>
+                                            {isSampling
+                                                ? `Reading ${samplingStep}/3…`
+                                                : `Drop Point${points.length > 0 ? ` (${points.length})` : ''}`}
+                                        </Text>
                                     </Pressable>
-                                )}
+                                </Animated.View>
+
                                 <View style={styles.walkIconGroup}>
                                     <Pressable
-                                        onPress={() => { stopWalking(); setWalkCoords([]); setLivePos(null); setTotalWalkDistance(0); lastWalkPoint.current = null; }}
-                                        disabled={walkCoords.length === 0}
-                                        style={[styles.mapIconBtn, walkCoords.length === 0 && styles.mapIconBtnOff]}
+                                        onPress={undo}
+                                        disabled={points.length === 0 || isSampling}
+                                        style={[styles.mapIconBtn, (points.length === 0 || isSampling) && styles.mapIconBtnOff]}
                                     >
-                                        <Ionicons name="trash-outline" size={18} color={walkCoords.length > 0 ? DANGER : '#B0BEC5'} />
+                                        <Ionicons name="arrow-undo" size={18} color={points.length > 0 && !isSampling ? '#FF9800' : '#B0BEC5'} />
                                     </Pressable>
-                                    <Pressable onPress={fetchCurrentLocation} disabled={isFetchingLocation} style={styles.mapIconBtn}>
+                                    <Pressable
+                                        onPress={clear}
+                                        disabled={points.length === 0 || isSampling}
+                                        style={[styles.mapIconBtn, (points.length === 0 || isSampling) && styles.mapIconBtnOff]}
+                                    >
+                                        <Ionicons name="trash-outline" size={18} color={points.length > 0 && !isSampling ? DANGER : '#B0BEC5'} />
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={fetchCurrentLocation}
+                                        disabled={isFetchingLocation}
+                                        style={styles.mapIconBtn}
+                                    >
                                         {isFetchingLocation
                                             ? <ActivityIndicator size="small" color={PRIMARY} />
                                             : <MaterialIcons name="my-location" size={18} color={PRIMARY} />}
@@ -656,7 +645,7 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                             </View>
                         </View>
 
-                        {/* Light bottom panel */}
+                        {/* Bottom panel */}
                         <View style={[styles.lightPanel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                             <View style={styles.lightInputRow}>
                                 <Ionicons name="pricetag-outline" size={16} color="#8F94A4" style={{ marginRight: 8 }} />
@@ -669,16 +658,16 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
                                 />
                             </View>
                             <Pressable
-                                onPress={saveManual}
-                                disabled={!canSaveManual || isLoading}
-                                style={[styles.saveBtn, canSaveManual ? styles.saveBtnOn : styles.saveBtnOff]}
+                                onPress={savePoints}
+                                disabled={!canSavePoints || isLoading}
+                                style={[styles.saveBtn, canSavePoints ? styles.saveBtnOn : styles.saveBtnOff]}
                             >
                                 {isLoading ? (
                                     <ActivityIndicator size="small" color="#fff" />
                                 ) : (
                                     <>
-                                        <Ionicons name="checkmark-circle" size={18} color={canSaveManual ? '#fff' : '#B8BBC6'} style={{ marginRight: 6 }} />
-                                        <Text style={[styles.saveBtnText, !canSaveManual && { color: '#B8BBC6' }]}>Save Boundary</Text>
+                                        <Ionicons name="checkmark-circle" size={18} color={canSavePoints ? '#fff' : '#B8BBC6'} style={{ marginRight: 6 }} />
+                                        <Text style={[styles.saveBtnText, !canSavePoints && { color: '#B8BBC6' }]}>Save Boundary</Text>
                                     </>
                                 )}
                             </Pressable>
@@ -708,12 +697,6 @@ const styles = StyleSheet.create({
     infoIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFE082', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
     infoTitle: { fontFamily: 'WorkSans_500Medium', fontSize: 13, color: '#E65100', marginBottom: 3 },
     infoText: { fontFamily: 'WorkSans_400Regular', fontSize: 12, color: '#FF8F00', lineHeight: 18 },
-
-    optionCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#E8EAF1', borderRadius: 16, padding: 16, marginBottom: 12, gap: 14 },
-    optionCardPressed: { backgroundColor: '#F3F0FC', borderColor: PRIMARY },
-    optionIcon: { width: 54, height: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    optionTitle: { fontFamily: 'WorkSans_600SemiBold', fontSize: 15, color: '#181A20', marginBottom: 4 },
-    optionDesc: { fontFamily: 'WorkSans_400Regular', fontSize: 12, color: '#8F94A4', lineHeight: 18 },
 
     pickerPrompt: { fontFamily: 'WorkSans_400Regular', fontSize: 13, color: '#8F94A4', lineHeight: 20, marginBottom: 20, marginTop: -8 },
 
@@ -763,18 +746,23 @@ const styles = StyleSheet.create({
     statusText: { fontFamily: 'WorkSans_500Medium', fontSize: 12, color: '#fff' },
 
     hintBanner: { position: 'absolute', top: 128, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
+    hintBannerTall: { flexDirection: 'column', paddingVertical: 12 },
     hintText: { fontFamily: 'WorkSans_400Regular', fontSize: 12, color: '#fff', marginLeft: 6 },
+    progressTrack: { flexDirection: 'row', gap: 6, marginTop: 8 },
+    progressSegment: { height: 5, flex: 1, borderRadius: 3 },
+    progressSegmentDone: { backgroundColor: SUCCESS },
+    progressSegmentPending: { backgroundColor: 'rgba(255,255,255,0.25)' },
 
     walkControls: { position: 'absolute', bottom: 12, left: 12, right: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     walkBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-    walkBtnStart: { backgroundColor: SUCCESS },
     walkBtnText: { fontFamily: 'WorkSans_600SemiBold', fontSize: 14, color: '#fff' },
     walkIconGroup: { flexDirection: 'row', gap: 8 },
     mapIconBtn: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, elevation: 4 },
     mapIconBtnOff: { backgroundColor: 'rgba(255,255,255,0.45)' },
 
-    walkDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(99,67,204,0.9)', borderWidth: 1.5, borderColor: '#fff' },
-    walkDotFirst: { width: 14, height: 14, borderRadius: 7, backgroundColor: SUCCESS },
+    vertex: { width: 26, height: 26, borderRadius: 13, backgroundColor: PRIMARY, borderWidth: 2, borderColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 5 },
+    vertexFirst: { backgroundColor: SUCCESS },
+    vertexText: { color: '#fff', fontWeight: '800', fontSize: 12 },
 
     lightPanel: { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#E8EAF1', paddingHorizontal: 16, paddingTop: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: -3 }, shadowRadius: 10, elevation: 10 },
     lightInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: BG, borderRadius: 14, paddingHorizontal: 14, height: 50, marginBottom: 10 },

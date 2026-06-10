@@ -93,7 +93,7 @@ export function FaceEnrollmentScreen({ navigation }: Props) {
     const handleClear = async () => {
         try {
             await faceApi.clear();
-            setProfile({ enrolled: false });
+            setProfile(null);
             Toast.show({ type: 'success', text1: 'Face profile cleared.', position: 'bottom' });
         } catch (err) {
             const msg = (err as any)?.response?.data?.message ?? 'Could not clear face profile.';
@@ -125,7 +125,7 @@ export function FaceEnrollmentScreen({ navigation }: Props) {
         );
     }
 
-    if (profile?.enrolled) {
+    if (profile) {
         return (
             <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-[#F6F6F9]">
                 {renderHeader()}

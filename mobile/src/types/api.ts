@@ -135,10 +135,15 @@ export interface ApiPresenceCheck {
 }
 
 // ─── Face profile ────────────────────────────────────────────────────────────
+// The backend returns the FaceProfile model record directly. A non-null profile
+// means enrolled; null means not enrolled. There is no `enrolled` boolean field.
 export interface ApiFaceProfile {
-    enrolled: boolean;
+    id: number;
+    user_id: number;
+    provider?: string | null;
     enrolled_at?: string | null;
-    last_match_score?: number | null;
+    created_at?: string;
+    updated_at?: string;
 }
 
 // ─── Dashboards ──────────────────────────────────────────────────────────────

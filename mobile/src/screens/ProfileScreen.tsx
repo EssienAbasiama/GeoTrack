@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
@@ -50,29 +50,32 @@ export function ProfileScreen() {
     const [logoutVisible, setLogoutVisible] = useState(false);
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const pulseScale = useRef(new Animated.Value(1)).current;
-    const { role, setRole } = useRole();
+    const { role, setRole, isStudent } = useRole();
     const { user, signOut, rebindDevice } = useAuth();
 
     const [device, setDevice] = useState<ApiDevice | null>(null);
     const [faceProfile, setFaceProfile] = useState<ApiFaceProfile | null>(null);
 
-    useEffect(() => {
-        let mounted = true;
-        (async () => {
-            try {
-                const [{ data: deviceData }, { data: faceData }] = await Promise.all([
-                    deviceApi.me(),
-                    faceApi.status(),
-                ]);
-                if (!mounted) return;
-                setDevice(deviceData.devices?.[0] ?? null);
-                setFaceProfile(faceData.profile);
-            } catch {
-                // best-effort
-            }
-        })();
-        return () => { mounted = false; };
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            if (!isStudent) return;
+            let mounted = true;
+            (async () => {
+                try {
+                    const [{ data: deviceData }, { data: faceData }] = await Promise.all([
+                        deviceApi.me(),
+                        faceApi.status(),
+                    ]);
+                    if (!mounted) return;
+                    setDevice(deviceData.devices?.[0] ?? null);
+                    setFaceProfile(faceData.profile);
+                } catch {
+                    // best-effort
+                }
+            })();
+            return () => { mounted = false; };
+        }, [isStudent])
+    );
 
     const handleLogout = async () => {
         setLogoutVisible(false);
@@ -154,57 +157,59 @@ export function ProfileScreen() {
                     </Pressable>
                 </View>
 
-                <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Security & Device</Text>
+                {isStudent && (
+                    <>
+                        <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Security & Device</Text>
 
-                <View className="mb-6 rounded-[16px] overflow-hidden">
-                    <Pressable
-                        onPress={() => navigation.navigate('FaceEnrollment')}
-                        className="mb-2 flex-row items-center justify-between rounded-[14px] bg-[#F5F6FA] px-4 py-4"
-                    >
-                        <View className="flex-row items-center flex-1">
-                            <MaterialCommunityIcons name="face-recognition" size={18} color="#8F94A4" />
-                            <View className="ml-4 flex-1">
-                                <Text className="font-medium text-[15px] text-[#232736]">Face profile</Text>
-                                <Text className="text-[12px] text-[#8F94A4] mt-0.5">
-                                    {faceProfile?.enrolled ? 'Enrolled' : 'Not enrolled'}
-                                </Text>
+                        <View className="mb-6 rounded-[16px] overflow-hidden">
+                            <Pressable
+                                onPress={() => navigation.navigate('FaceEnrollment')}
+                                className="mb-2 flex-row items-center justify-between rounded-[14px] bg-[#F5F6FA] px-4 py-4"
+                            >
+                                <View className="flex-row items-center flex-1">
+                                    <MaterialCommunityIcons name="face-recognition" size={18} color="#8F94A4" />
+                                    <View className="ml-4 flex-1">
+                                        <Text className="font-medium text-[15px] text-[#232736]">Face profile</Text>
+                                        <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                            {faceProfile ? 'Enrolled' : 'Not enrolled'}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#8F94A4" />
+                            </Pressable>
+
+                            <View className="mb-2 rounded-[14px] bg-[#F5F6FA] px-4 py-4">
+                                <View className="flex-row items-center">
+                                    <Ionicons name="phone-portrait-outline" size={18} color="#8F94A4" />
+                                    <View className="ml-4 flex-1">
+                                        <Text className="font-medium text-[15px] text-[#232736]">Bound device</Text>
+                                        <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                            {device
+                                                ? `${device.brand ?? ''} ${device.model ?? ''} · ${device.platform}`.trim()
+                                                : 'No device on file'}
+                                        </Text>
+                                    </View>
+                                </View>
                             </View>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#8F94A4" />
-                    </Pressable>
 
-                    <View className="mb-2 rounded-[14px] bg-[#F5F6FA] px-4 py-4">
-                        <View className="flex-row items-center">
-                            <Ionicons name="phone-portrait-outline" size={18} color="#8F94A4" />
-                            <View className="ml-4 flex-1">
-                                <Text className="font-medium text-[15px] text-[#232736]">Bound device</Text>
-                                <Text className="text-[12px] text-[#8F94A4] mt-0.5">
-                                    {device
-                                        ? `${device.brand ?? ''} ${device.model ?? ''} · ${device.platform}`.trim()
-                                        : 'No device on file'}
-                                </Text>
-                            </View>
+                            <Pressable
+                                onPress={handleResetDevice}
+                                className="flex-row items-center justify-between rounded-[14px] bg-[#FEEFEF] px-4 py-4"
+                            >
+                                <View className="flex-row items-center flex-1">
+                                    <Ionicons name="refresh" size={18} color="#cc4361" />
+                                    <Text className="ml-4 font-medium text-[15px] text-[#cc4361]">Reset device</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#cc4361" />
+                            </Pressable>
                         </View>
-                    </View>
-
-                    <Pressable
-                        onPress={handleResetDevice}
-                        className="flex-row items-center justify-between rounded-[14px] bg-[#FEEFEF] px-4 py-4"
-                    >
-                        <View className="flex-row items-center flex-1">
-                            <Ionicons name="refresh" size={18} color="#cc4361" />
-                            <Text className="ml-4 font-medium text-[15px] text-[#cc4361]">Reset device</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#cc4361" />
-                    </Pressable>
-                </View>
+                    </>
+                )}
 
                 <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Account</Text>
 
                 <View className="mb-6 rounded-[16px] overflow-hidden">
                     <MenuItem icon="information-circle-outline" label="Account Information" />
-
-                    <MenuItem icon="location-outline" label="Address Management" />
 
                     <MenuItem icon="lock-closed-outline" label="Password Manager" />
                 </View>

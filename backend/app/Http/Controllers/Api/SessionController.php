@@ -23,20 +23,20 @@ class SessionController extends Controller
             ], 403);
         }
 
-        if (!$course->geofence) {
-            return response()->json([
-                'message' => 'Configure a geofence for this course before starting a session.',
-            ], 422);
-        }
-
         $validated = $request->validate([
-            'mode' => ['required', 'in:tap,face_recognition'],
+            'mode' => ['required', 'in:tap,face_recognition,manual'],
             'duration_minutes' => ['nullable', 'integer', 'min:5', 'max:480'],
             'presence_checks_enabled' => ['nullable', 'boolean'],
             'presence_check_interval_minutes' => ['nullable', 'integer', 'min:1', 'max:120'],
             'late_after_minutes' => ['nullable', 'integer', 'min:0', 'max:120'],
             'notes' => ['nullable', 'string'],
         ]);
+
+        if ($validated['mode'] !== 'manual' && !$course->geofence) {
+            return response()->json([
+                'message' => 'Configure a geofence for this course before starting a session.',
+            ], 422);
+        }
 
         $hasActive = AttendanceSession::query()
             ->where('course_id', $course->id)

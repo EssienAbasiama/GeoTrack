@@ -432,9 +432,13 @@ export const courseApi = {
         code: string;
         title: string;
         description?: string;
-        department: string;
+        department?: string;
         level?: string;
         lecturer_id?: number;
+        venue?: string;
+        day?: string;
+        start_time?: string;
+        end_time?: string;
     }) => unwrap<{ course: ApiCourse }>(apiClient.post('/courses', body)),
 
     get: (id: number | string) =>
@@ -491,7 +495,7 @@ export const sessionApi = {
     start: (
         courseId: number | string,
         body: {
-            mode?: 'tap' | 'face_recognition';
+            mode?: 'tap' | 'face_recognition' | 'manual';
             duration_minutes?: number;
             presence_checks_enabled?: boolean;
             presence_check_interval_minutes?: number;

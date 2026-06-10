@@ -41,22 +41,29 @@ class CourseController extends Controller
     public function store(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!$user->isAdmin()) {
+        if (!$user->isAdmin() && !$user->isLecturer()) {
             return response()->json([
                 'message' => 'You are not authorised to create courses.',
             ], 403);
         }
 
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:32', 'unique:courses,code'],
-            'title' => ['required', 'string', 'max:255'],
+            'code'        => ['required', 'string', 'max:32', 'unique:courses,code'],
+            'title'       => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'department' => ['required', 'string', 'max:128'],
-            'level' => ['nullable', 'string', 'max:32'],
+            'department'  => ['nullable', 'string', 'max:128'],
+            'level'       => ['nullable', 'string', 'max:32'],
             'lecturer_id' => ['nullable', 'integer', 'exists:users,id'],
+            'venue'       => ['nullable', 'string', 'max:255'],
+            'day'         => ['nullable', 'string', 'max:16'],
+            'start_time'  => ['nullable', 'string', 'max:8'],
+            'end_time'    => ['nullable', 'string', 'max:8'],
         ]);
 
-        if (!empty($validated['lecturer_id'])) {
+        // Lecturers are always assigned to their own course; only admins can assign another lecturer.
+        if ($user->isLecturer()) {
+            $validated['lecturer_id'] = $user->id;
+        } elseif (!empty($validated['lecturer_id'])) {
             $lecturer = User::query()->find($validated['lecturer_id']);
             if (!$lecturer || $lecturer->role !== 'lecturer') {
                 return response()->json([
@@ -67,15 +74,29 @@ class CourseController extends Controller
 
         try {
             $course = DB::transaction(function () use ($validated, $user) {
-                return Course::query()->create([
-                    'code' => $validated['code'],
-                    'title' => $validated['title'],
+                $course = Course::query()->create([
+                    'code'        => $validated['code'],
+                    'title'       => $validated['title'],
                     'description' => $validated['description'] ?? null,
-                    'department' => $validated['department'],
-                    'level' => $validated['level'] ?? null,
+                    'department'  => $validated['department'] ?? null,
+                    'level'       => $validated['level'] ?? null,
                     'lecturer_id' => $validated['lecturer_id'] ?? null,
-                    'created_by' => $user->id,
+                    'venue'       => $validated['venue'] ?? null,
+                    'day'         => $validated['day'] ?? null,
+                    'start_time'  => $validated['start_time'] ?? null,
+                    'end_time'    => $validated['end_time'] ?? null,
+                    'created_by'  => $user->id,
                 ]);
+
+                // HOC is a student in their own class — auto-enroll them.
+                if ($user->role === 'hoc') {
+                    CourseEnrollment::query()->firstOrCreate(
+                        ['course_id' => $course->id, 'user_id' => $user->id],
+                        ['enrolled_at' => now()],
+                    );
+                }
+
+                return $course;
             });
         } catch (Throwable $e) {
             report($e);
