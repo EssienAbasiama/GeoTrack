@@ -81,6 +81,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/courses/{course}/self-enroll', [CourseController::class, 'selfEnroll']);
         Route::delete('/courses/{course}/enroll/{userId}', [CourseController::class, 'unenroll']);
         Route::get('/courses/{course}/students', [CourseController::class, 'students']);
+        Route::get('/courses/{course}/students/{userId}/attendance', [CourseController::class, 'studentAttendance']);
 
         // Class invites / share links
         Route::post('/courses/{course}/invites', [CourseInviteController::class, 'store']);

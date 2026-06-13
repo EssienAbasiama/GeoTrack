@@ -22,6 +22,7 @@ import type {
     ApiLecturer,
     ApiPushTokenResponse,
     ApiClassInvite,
+    ApiStudentAttendance,
 } from '../types/api';
 
 // ─── Navigation ref (register in App.tsx: <NavigationContainer ref={navigationRef}>) ───
@@ -489,6 +490,11 @@ export const courseApi = {
     students: (courseId: number | string) =>
         unwrap<{ students: ApiCourseStudent[]; total_sessions?: number }>(
             apiClient.get(`/courses/${courseId}/students`),
+        ),
+
+    studentAttendance: (courseId: number | string, userId: number | string) =>
+        unwrap<ApiStudentAttendance>(
+            apiClient.get(`/courses/${courseId}/students/${userId}/attendance`),
         ),
 };
 

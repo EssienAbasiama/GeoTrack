@@ -9,6 +9,7 @@ import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from '../compo
 import type { ClassEntity } from '../types/roles';
 import type { RootStackParamList } from '../types/navigation';
 import { courseApi } from '../services/apiClient';
+import { formatTimeRange } from '../utils/time';
 import type { ApiCourse } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
@@ -176,7 +177,7 @@ function ClassCard({ item, index, onPress }: { item: ClassEntity; index: number;
                             <Ionicons name="time" size={14} color="#2196F3" />
                         </View>
                         <Text className="ml-2 text-[13px] text-[#5A5D6B]">
-                            {item.startTime} - {item.endTime}
+                            {formatTimeRange(item.startTime, item.endTime) || 'Not set'}
                         </Text>
                     </View>
                     <View className="w-1/2 flex-row items-center pl-2">
@@ -264,14 +265,28 @@ export function ClassesScreen() {
         }
     };
 
+    const didInitialLoad = useRef(false);
+
     useEffect(() => {
         let mounted = true;
         (async () => {
             await loadClasses();
-            if (mounted) setLoading(false);
+            if (mounted) {
+                setLoading(false);
+                didInitialLoad.current = true;
+            }
         })();
         return () => { mounted = false; };
     }, []);
+
+    // Silently refetch when returning to this screen (e.g. after editing a class
+    // in ClassDetail) so the list always reflects the latest changes.
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            if (didInitialLoad.current) loadClasses();
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     const onRefresh = async () => {
         setRefreshing(true);

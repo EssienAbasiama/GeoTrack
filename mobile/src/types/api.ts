@@ -95,6 +95,33 @@ export interface ApiCourseStudent {
     attendance_rate?: number | null;
 }
 
+// ─── Student attendance (per-course history) ───────────────────────────────────
+export interface ApiStudentAttendanceRow {
+    id: string;
+    date: string | null;
+    day: string | null;
+    check_in_time: string | null;
+    duration_minutes: number;
+    expected_minutes: number;
+    status: 'present' | 'late' | 'absent' | 'excused';
+    was_on_time: boolean;
+    location_verified: boolean;
+    face_verified: boolean;
+}
+
+export interface ApiStudentAttendance {
+    student: { id: number; name: string; email: string; matric_no?: string | null };
+    summary: {
+        total_sessions: number;
+        present: number;
+        late: number;
+        absent: number;
+        excused: number;
+        attendance_rate: number;
+    };
+    sessions: ApiStudentAttendanceRow[];
+}
+
 // ─── Geofence ────────────────────────────────────────────────────────────────
 export type GeofenceShape = 'circle' | 'polygon';
 

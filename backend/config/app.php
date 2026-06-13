@@ -65,7 +65,9 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Default to West Africa Time so class schedule times (entered as local
+    // time) line up with server-side "now". Override via APP_TIMEZONE if needed.
+    'timezone' => env('APP_TIMEZONE', 'Africa/Lagos'),
 
     /*
     |--------------------------------------------------------------------------

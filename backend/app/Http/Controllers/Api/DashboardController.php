@@ -8,12 +8,17 @@ use App\Models\AttendanceSession;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
 use App\Models\User;
+use App\Services\ScheduledSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    public function __construct(private readonly ScheduledSessionService $scheduledSessions)
+    {
+    }
+
     public function student(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -21,6 +26,9 @@ class DashboardController extends Controller
         $courseIds = CourseEnrollment::query()
             ->where('user_id', $user->id)
             ->pluck('course_id');
+
+        // Open any sessions that are due by schedule so "in session" classes show.
+        $this->scheduledSessions->ensureForCourseIds($courseIds);
 
         $totalCourses = $courseIds->count();
         $allSessionIds = AttendanceSession::query()
@@ -73,12 +81,25 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
+        // Lecturers see courses they teach; an HOC sees the classes they oversee
+        // (the ones they're enrolled in).
+        if ($user->role === 'hoc') {
+            $courseIds = CourseEnrollment::query()
+                ->where('user_id', $user->id)
+                ->pluck('course_id');
+        } else {
+            $courseIds = Course::query()
+                ->where('lecturer_id', $user->id)
+                ->pluck('id');
+        }
+
+        // Open any sessions that are due by schedule before reading them back.
+        $this->scheduledSessions->ensureForCourseIds($courseIds);
+
         $courses = Course::query()
-            ->where('lecturer_id', $user->id)
+            ->whereIn('id', $courseIds)
             ->withCount(['enrollments', 'sessions'])
             ->get();
-
-        $courseIds = $courses->pluck('id');
 
         $activeSessions = AttendanceSession::query()
             ->whereIn('course_id', $courseIds)

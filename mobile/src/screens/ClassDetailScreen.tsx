@@ -19,6 +19,7 @@ import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../c
 import { celebrationPattern } from '../utils/haptics';
 import { notifyCheckInSuccess } from '../services/notifications';
 import { courseApi, geofenceApi, sessionApi, inviteApi } from '../services/apiClient';
+import { formatTimeRange } from '../utils/time';
 import type { ApiCourseStudent } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
@@ -716,9 +717,7 @@ export function ClassDetailScreen() {
                                 <View className="ml-3">
                                     <Text className="text-[10px] text-[#B8BBC6]">Time</Text>
                                     <Text className="font-medium text-[14px] text-[#181A20]">
-                                        {classInfo.startTime && classInfo.endTime
-                                            ? `${classInfo.startTime} - ${classInfo.endTime}`
-                                            : 'Not set'}
+                                        {formatTimeRange(classInfo.startTime, classInfo.endTime) || 'Not set'}
                                     </Text>
                                 </View>
                             </View>
@@ -873,6 +872,7 @@ export function ClassDetailScreen() {
                                     matricNo: item.matricNo,
                                     email: item.email,
                                     avatar: item.avatar ?? '',
+                                    courseId: classId,
                                     classCode,
                                     className,
                                 });

@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceRecord;
+use App\Models\AttendanceSession;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
-use App\Models\Institution;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -296,6 +297,92 @@ class CourseController extends Controller
 
         return response()->json([
             'message' => 'Enrollment removed.',
+        ]);
+    }
+
+    /**
+     * Per-student attendance history for a course — every session with the
+     * student's record (present/late/absent), computed live from the database.
+     */
+    public function studentAttendance(Request $request, Course $course, int $userId): JsonResponse
+    {
+        $user = $request->user();
+        $isEnrolled = $course->enrollments()->where('user_id', $user->id)->exists();
+        if (!$user->isAdmin() && $course->lecturer_id !== $user->id && !$isEnrolled) {
+            return response()->json([
+                'message' => 'You are not authorised to view this student.',
+            ], 403);
+        }
+
+        $student = User::query()->find($userId);
+        if (!$student) {
+            return response()->json(['message' => 'Student not found.'], 404);
+        }
+
+        $sessions = $course->sessions()->orderByDesc('starts_at')->get();
+        $records = AttendanceRecord::query()
+            ->where('user_id', $userId)
+            ->whereIn('session_id', $sessions->pluck('id'))
+            ->get()
+            ->keyBy('session_id');
+
+        $rows = $sessions->map(function (AttendanceSession $s) use ($records) {
+            $record = $records->get($s->id);
+            $expected = ($s->starts_at && $s->ends_at)
+                ? (int) round($s->starts_at->diffInMinutes($s->ends_at))
+                : 0;
+
+            $status = $record?->status ?? 'absent';
+            $checkIn = $record?->checked_in_at ?? null;
+
+            // Duration = from check-in to scheduled end (we record check-in only),
+            // clamped to the scheduled length. 0 when absent/excused.
+            $duration = 0;
+            if ($record && in_array($status, ['present', 'late'], true) && $checkIn && $s->ends_at) {
+                $duration = (int) round($checkIn->diffInMinutes($s->ends_at, false));
+                $duration = max(0, min($expected, $duration));
+            }
+
+            return [
+                'id' => (string) $s->id,
+                'date' => optional($s->starts_at)->toDateString(),
+                'day' => optional($s->starts_at)->format('l'),
+                'check_in_time' => $checkIn ? $checkIn->format('H:i') : null,
+                'duration_minutes' => $duration,
+                'expected_minutes' => $expected,
+                'status' => $status,
+                'was_on_time' => $status === 'present',
+                'location_verified' => (bool) ($record->within_geofence ?? false),
+                'face_verified' => (bool) ($record->face_verified ?? false),
+            ];
+        })->values();
+
+        $total = $rows->count();
+        $present = $rows->where('status', 'present')->count();
+        $late = $rows->where('status', 'late')->count();
+        $absent = $rows->where('status', 'absent')->count();
+        $excused = $rows->where('status', 'excused')->count();
+        $attended = $present + $late;
+
+        return response()->json([
+            'message' => 'Student attendance retrieved.',
+            'data' => [
+                'student' => [
+                    'id' => $student->id,
+                    'name' => $student->name,
+                    'email' => $student->email,
+                    'matric_no' => $student->matric_no,
+                ],
+                'summary' => [
+                    'total_sessions' => $total,
+                    'present' => $present,
+                    'late' => $late,
+                    'absent' => $absent,
+                    'excused' => $excused,
+                    'attendance_rate' => $total > 0 ? round($attended / $total * 100, 1) : 0.0,
+                ],
+                'sessions' => $rows,
+            ],
         ]);
     }
 

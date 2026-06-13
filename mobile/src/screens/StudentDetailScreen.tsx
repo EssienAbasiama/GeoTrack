@@ -1,6 +1,7 @@
 import { Ionicons, MaterialIcons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
     Animated,
     Dimensions,
     Easing,
@@ -16,21 +17,24 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { PieChart, LineChart, BarChart } from '../components/charts';
+import { courseApi } from '../services/apiClient';
+import { formatTime12h } from '../utils/time';
 
 const PRIMARY_COLOR = '#6343cc';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Per-student attendance is not yet exposed in the API contract:
-// `attendanceApi.myHistory()` returns the *current* user's history, and
-// `sessionApi.records()` is per-session. Until the backend ships
-// `/admin/students/:id/history` (or similar), this screen keeps using mock
-// session data so the analytics charts have something to render.
-// TODO: replace MOCK_SESSIONS once that endpoint exists.
+function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 interface SessionRecord {
     id: string;
     date: string;
     day: string;
-    checkInTime: string;
+    checkInTime: string | null;
     checkOutTime: string | null;
     durationMinutes: number;
     expectedDurationMinutes: number;
@@ -38,129 +42,6 @@ interface SessionRecord {
     wasOnTime: boolean;
     locationVerified: boolean;
 }
-
-const MOCK_SESSIONS: SessionRecord[] = [
-    {
-        id: '1',
-        date: '2026-04-15',
-        day: 'Wednesday',
-        checkInTime: '09:02',
-        checkOutTime: '10:55',
-        durationMinutes: 113,
-        expectedDurationMinutes: 120,
-        status: 'present',
-        wasOnTime: true,
-        locationVerified: true,
-    },
-    {
-        id: '2',
-        date: '2026-04-08',
-        day: 'Wednesday',
-        checkInTime: '09:12',
-        checkOutTime: '10:58',
-        durationMinutes: 106,
-        expectedDurationMinutes: 120,
-        status: 'late',
-        wasOnTime: false,
-        locationVerified: true,
-    },
-    {
-        id: '3',
-        date: '2026-04-01',
-        day: 'Wednesday',
-        checkInTime: '09:00',
-        checkOutTime: '11:00',
-        durationMinutes: 120,
-        expectedDurationMinutes: 120,
-        status: 'present',
-        wasOnTime: true,
-        locationVerified: true,
-    },
-    {
-        id: '4',
-        date: '2026-03-25',
-        day: 'Wednesday',
-        checkInTime: null as any,
-        checkOutTime: null,
-        durationMinutes: 0,
-        expectedDurationMinutes: 120,
-        status: 'absent',
-        wasOnTime: false,
-        locationVerified: false,
-    },
-    {
-        id: '5',
-        date: '2026-03-18',
-        day: 'Wednesday',
-        checkInTime: '09:05',
-        checkOutTime: '10:45',
-        durationMinutes: 100,
-        expectedDurationMinutes: 120,
-        status: 'present',
-        wasOnTime: true,
-        locationVerified: true,
-    },
-    {
-        id: '6',
-        date: '2026-03-11',
-        day: 'Wednesday',
-        checkInTime: '09:00',
-        checkOutTime: '11:02',
-        durationMinutes: 122,
-        expectedDurationMinutes: 120,
-        status: 'present',
-        wasOnTime: true,
-        locationVerified: true,
-    },
-    {
-        id: '7',
-        date: '2026-03-04',
-        day: 'Wednesday',
-        checkInTime: null as any,
-        checkOutTime: null,
-        durationMinutes: 0,
-        expectedDurationMinutes: 120,
-        status: 'excused',
-        wasOnTime: false,
-        locationVerified: false,
-    },
-    {
-        id: '8',
-        date: '2026-02-25',
-        day: 'Wednesday',
-        checkInTime: '09:20',
-        checkOutTime: '10:50',
-        durationMinutes: 90,
-        expectedDurationMinutes: 120,
-        status: 'late',
-        wasOnTime: false,
-        locationVerified: true,
-    },
-    {
-        id: '9',
-        date: '2026-02-18',
-        day: 'Wednesday',
-        checkInTime: '09:01',
-        checkOutTime: '10:59',
-        durationMinutes: 118,
-        expectedDurationMinutes: 120,
-        status: 'present',
-        wasOnTime: true,
-        locationVerified: true,
-    },
-    {
-        id: '10',
-        date: '2026-02-11',
-        day: 'Wednesday',
-        checkInTime: '09:00',
-        checkOutTime: '11:00',
-        durationMinutes: 120,
-        expectedDurationMinutes: 120,
-        status: 'present',
-        wasOnTime: true,
-        locationVerified: true,
-    },
-];
 
 // Analytics calculations
 function calculateAnalytics(sessions: SessionRecord[]) {
@@ -342,12 +223,40 @@ function SessionCard({ session, index }: { session: SessionRecord; index: number
 export function StudentDetailScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const route = useRoute<RouteProp<RootStackParamList, 'StudentDetail'>>();
-    const { studentId, studentName, matricNo, email, avatar, classCode, className } = route.params;
+    const { studentId, studentName, matricNo, email, avatar, courseId, classCode, className } = route.params;
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
     const [activeTab, setActiveTab] = useState<'overview' | 'sessions'>('overview');
-    const [sessions] = useState(MOCK_SESSIONS);
+    const [sessions, setSessions] = useState<SessionRecord[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        setLoading(true);
+        courseApi
+            .studentAttendance(courseId, studentId)
+            .then(({ data }) => {
+                if (!mounted) return;
+                setSessions(
+                    data.sessions.map((r) => ({
+                        id: r.id,
+                        date: r.date ?? '',
+                        day: r.day ?? '',
+                        checkInTime: r.check_in_time ? formatTime12h(r.check_in_time) : null,
+                        checkOutTime: null,
+                        durationMinutes: r.duration_minutes,
+                        expectedDurationMinutes: r.expected_minutes,
+                        status: r.status,
+                        wasOnTime: r.was_on_time,
+                        locationVerified: r.location_verified,
+                    })),
+                );
+            })
+            .catch(() => { if (mounted) setSessions([]); })
+            .finally(() => { if (mounted) setLoading(false); });
+        return () => { mounted = false; };
+    }, [courseId, studentId]);
 
     const analytics = calculateAnalytics(sessions);
     const weeklyData = getWeeklyData(sessions);
@@ -478,11 +387,19 @@ export function StudentDetailScreen() {
                     <View className="px-5 mb-4">
                         <View className="bg-white rounded-[20px] p-5 shadow-sm shadow-black/5">
                             <View className="flex-row items-center">
-                                <Image
-                                    source={{ uri: avatar }}
-                                    className="h-16 w-16 rounded-full"
-                                    resizeMode="cover"
-                                />
+                                {avatar ? (
+                                    <Image
+                                        source={{ uri: avatar }}
+                                        className="h-16 w-16 rounded-full"
+                                        resizeMode="cover"
+                                    />
+                                ) : (
+                                    <View className="h-16 w-16 rounded-full items-center justify-center bg-[#F0EDFC]">
+                                        <Text className="font-heading text-[22px] text-[#6343cc]">
+                                            {getInitials(studentName)}
+                                        </Text>
+                                    </View>
+                                )}
                                 <View className="ml-4 flex-1">
                                     <Text className="font-heading text-[18px] text-[#181A20]">{studentName}</Text>
                                     <Text className="text-[13px] text-[#8F94A4] mt-0.5">{matricNo}</Text>
@@ -542,7 +459,22 @@ export function StudentDetailScreen() {
                         </Pressable>
                     </View>
 
-                    {activeTab === 'overview' ? (
+                    {loading ? (
+                        <View className="items-center py-16">
+                            <ActivityIndicator size="large" color={PRIMARY_COLOR} />
+                            <Text className="mt-3 text-[13px] text-[#8F94A4]">Loading attendance…</Text>
+                        </View>
+                    ) : sessions.length === 0 ? (
+                        <View className="items-center py-16 px-8">
+                            <View className="h-16 w-16 items-center justify-center rounded-full bg-[#F0EDFC] mb-3">
+                                <Ionicons name="calendar-outline" size={30} color={PRIMARY_COLOR} />
+                            </View>
+                            <Text className="font-heading text-[16px] text-[#181A20] text-center">No sessions yet</Text>
+                            <Text className="text-[13px] text-[#8F94A4] mt-1 text-center">
+                                Attendance analytics will appear here once {classCode} has held sessions.
+                            </Text>
+                        </View>
+                    ) : activeTab === 'overview' ? (
                         <View className="px-5">
                             {/* Suggested Grade Card */}
                             {renderGradeCard()}

@@ -75,6 +75,7 @@ export type RootStackParamList = {
     matricNo: string;
     email: string;
     avatar: string;
+    courseId: string;
     classCode: string;
     className: string;
   };

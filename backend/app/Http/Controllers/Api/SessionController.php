@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceSession;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
+use App\Services\ScheduledSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,6 +15,10 @@ use Throwable;
 
 class SessionController extends Controller
 {
+    public function __construct(private readonly ScheduledSessionService $scheduledSessions)
+    {
+    }
+
     public function store(Request $request, Course $course): JsonResponse
     {
         $user = $request->user();
@@ -123,6 +128,12 @@ class SessionController extends Controller
             ->where('ends_at', '>', now())
             ->latest('id')
             ->first();
+
+        // If nobody has started a session but the class is within its scheduled
+        // day/time window, open one automatically so students can check in.
+        if (!$session) {
+            $session = $this->scheduledSessions->ensureForCourse($course);
+        }
 
         return response()->json([
             'message' => $session ? 'Active session retrieved.' : 'No active session for this course.',

@@ -24,6 +24,7 @@ import {
     BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
 import Toast from 'react-native-toast-message';
+import { formatTime12h } from '../utils/time';
 
 const PRIMARY_COLOR = '#6343cc';
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -242,7 +243,7 @@ export const EditClassBottomSheet = forwardRef<EditClassBottomSheetRef, EditClas
                                     <Text
                                         style={[styles.input, { marginLeft: 10 }, !startTime && { color: '#B8BBC6' }]}
                                     >
-                                        {startTime || '09:00'}
+                                        {startTime ? formatTime12h(startTime) : '9:00 am'}
                                     </Text>
                                     <Ionicons name="chevron-down" size={16} color="#B8BBC6" />
                                 </Pressable>
@@ -254,7 +255,7 @@ export const EditClassBottomSheet = forwardRef<EditClassBottomSheetRef, EditClas
                                     <Text
                                         style={[styles.input, { marginLeft: 10 }, !endTime && { color: '#B8BBC6' }]}
                                     >
-                                        {endTime || '11:00'}
+                                        {endTime ? formatTime12h(endTime) : '11:00 am'}
                                     </Text>
                                     <Ionicons name="chevron-down" size={16} color="#B8BBC6" />
                                 </Pressable>
@@ -316,7 +317,7 @@ export const EditClassBottomSheet = forwardRef<EditClassBottomSheetRef, EditClas
                                                     className="text-[15px]"
                                                     style={{ color: active ? PRIMARY_COLOR : '#181A20', fontFamily: active ? 'WorkSans_600SemiBold' : 'WorkSans_400Regular' }}
                                                 >
-                                                    {t}
+                                                    {formatTime12h(t)}
                                                 </Text>
                                                 {active && <Ionicons name="checkmark-circle" size={20} color={PRIMARY_COLOR} />}
                                             </Pressable>
