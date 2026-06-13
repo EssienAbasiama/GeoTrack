@@ -161,7 +161,9 @@ function ClassCard({ item, index, onPress }: { item: ClassEntity; index: number;
                         <View className="h-7 w-7 items-center justify-center rounded-lg bg-[#E8F5E9]">
                             <Ionicons name="location" size={14} color="#4CAF50" />
                         </View>
-                        <Text className="ml-2 text-[13px] text-[#5A5D6B]">{item.venue}</Text>
+                        <Text className="ml-2 text-[13px] text-[#5A5D6B]" numberOfLines={1}>
+                            {item.venue || 'No location'}
+                        </Text>
                     </View>
                     <View className="w-1/2 flex-row items-center mb-3 pl-2">
                         <View className="h-7 w-7 items-center justify-center rounded-lg bg-[#FFF3E0]">
@@ -222,7 +224,9 @@ function apiCourseToClassEntity(c: ApiCourse): ClassEntity {
         id: String(c.id),
         code: c.code,
         name: c.title ?? c.name ?? '',
-        venue: c.venue ?? '',
+        // Fall back to the geofence label when no venue text was typed
+        // (classes whose location was set by drawing a boundary).
+        venue: c.venue?.trim() || c.geofence?.name?.trim() || '',
         day: c.day ?? '',
         startTime: c.start_time ?? '',
         endTime: c.end_time ?? '',

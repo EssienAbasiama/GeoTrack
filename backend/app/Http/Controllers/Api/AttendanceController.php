@@ -7,6 +7,7 @@ use App\Models\AttendanceRecord;
 use App\Models\AttendanceSession;
 use App\Models\CourseEnrollment;
 use App\Models\Device;
+use App\Models\FaceProfile;
 use App\Services\FaceMatchService;
 use App\Services\GeofenceService;
 use Illuminate\Http\JsonResponse;
@@ -88,24 +89,40 @@ class AttendanceController extends Controller
             ], 422);
         }
 
-        // Face recognition
+        // Face validation — ensures the person checking in is really the student.
+        // A face image is required for face_recognition sessions, and whenever the
+        // app sends one (the GeoTrack app always captures a selfie at check-in) it
+        // is verified against the student's enrolled face.
         $faceVerified = false;
         $faceConfidence = null;
         $faceImagePath = null;
-        if ($session->mode === 'face_recognition') {
-            if (empty($validated['face_image_base64'])) {
+
+        $hasFaceImage = !empty($validated['face_image_base64']);
+
+        if ($session->mode === 'face_recognition' && !$hasFaceImage) {
+            return response()->json([
+                'message' => 'Face image required for this session mode.',
+            ], 422);
+        }
+
+        if ($hasFaceImage) {
+            // The student must have enrolled a reference face to verify against.
+            $hasProfile = FaceProfile::query()->where('user_id', $user->id)->exists();
+            if (!$hasProfile) {
                 return response()->json([
-                    'message' => 'Face image required for this session mode.',
+                    'message' => 'Enroll your face before checking in so we can verify it\'s you.',
+                    'data' => ['face_enrollment_required' => true],
                 ], 422);
             }
+
             $verifyResult = $this->faceMatch->verify($user, $validated['face_image_base64']);
             $faceVerified = (bool) $verifyResult['matched'];
             $faceConfidence = (float) $verifyResult['confidence'];
             $faceImagePath = $verifyResult['image_path'] ?? null;
             if (!$faceVerified) {
                 return response()->json([
-                    'message' => 'Face verification failed.',
-                    'data' => ['confidence' => $faceConfidence],
+                    'message' => 'Face verification failed — make sure it\'s really you and try again.',
+                    'data' => ['confidence' => $faceConfidence, 'face_verification_failed' => true],
                 ], 422);
             }
         }

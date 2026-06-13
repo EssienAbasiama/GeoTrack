@@ -1,6 +1,7 @@
 import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { ActivityIndicator, Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Modal, Pressable, Share, Text, TextInput, View, Image } from 'react-native';
+import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -12,10 +13,12 @@ import { useAttendanceControl } from '../store/AttendanceControlContext';
 import { AddStudentBottomSheet, type AddStudentBottomSheetRef } from '../components/AddStudentBottomSheet';
 import { SetBoundaryBottomSheet, type SetBoundaryBottomSheetRef, type ClassBoundary } from '../components/SetBoundaryBottomSheet';
 import { VenuePickerBottomSheet, type VenuePickerBottomSheetRef } from '../components/VenuePickerBottomSheet';
+import { EditClassBottomSheet, type EditClassBottomSheetRef, type EditClassValues } from '../components/EditClassBottomSheet';
+import { AssignLecturerBottomSheet, type AssignLecturerBottomSheetRef, type AssignedLecturer } from '../components/AssignLecturerBottomSheet';
 import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../components/LocationCheckBottomSheet';
 import { celebrationPattern } from '../utils/haptics';
 import { notifyCheckInSuccess } from '../services/notifications';
-import { courseApi, geofenceApi, sessionApi } from '../services/apiClient';
+import { courseApi, geofenceApi, sessionApi, inviteApi } from '../services/apiClient';
 import type { ApiCourseStudent } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
@@ -31,6 +34,7 @@ interface Student {
 }
 
 interface Lecturer {
+    id?: number | null;
     name: string;
     email: string;
     department: string;
@@ -176,12 +180,26 @@ export function ClassDetailScreen() {
     const venuePickerRef = useRef<VenuePickerBottomSheetRef>(null);
     const setLocationRef = useRef<SetBoundaryBottomSheetRef>(null);
     const locationCheckRef = useRef<LocationCheckBottomSheetRef>(null);
+    const editClassRef = useRef<EditClassBottomSheetRef>(null);
+    const assignLecturerRef = useRef<AssignLecturerBottomSheetRef>(null);
     const searchInputRef = useRef<TextInput>(null);
 
     const [students, setStudents] = useState<Student[]>([]);
     const [lecturer, setLecturer] = useState<Lecturer | null>(null);
     const [loadingData, setLoadingData] = useState(true);
     const [courseVenue, setCourseVenue] = useState<string | null>(venue ?? null);
+    // Editable class info kept in state so edits reflect immediately.
+    const [classInfo, setClassInfo] = useState({
+        code: classCode,
+        name: className,
+        department: '',
+        day,
+        startTime,
+        endTime,
+    });
+    const [menuVisible, setMenuVisible] = useState(false);
+    const [deleteVisible, setDeleteVisible] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [hasCheckedIn, setHasCheckedIn] = useState(false);
@@ -210,8 +228,20 @@ export function ClassDetailScreen() {
                 if (course?.venue?.trim()) {
                     setCourseVenue(course.venue.trim());
                 }
+                if (course) {
+                    setClassInfo((prev) => ({
+                        ...prev,
+                        code: course.code ?? prev.code,
+                        name: course.title ?? course.name ?? prev.name,
+                        department: course.department ?? prev.department,
+                        day: course.day ?? prev.day,
+                        startTime: course.start_time ?? prev.startTime,
+                        endTime: course.end_time ?? prev.endTime,
+                    }));
+                }
                 if (course?.lecturer) {
                     setLecturer({
+                        id: course.lecturer.id,
                         name: course.lecturer.name,
                         email: course.lecturer.email,
                         department: course.department ?? '',
@@ -219,6 +249,7 @@ export function ClassDetailScreen() {
                     });
                 } else if (course?.lecturer_name) {
                     setLecturer({
+                        id: course.lecturer_id ?? null,
                         name: course.lecturer_name,
                         email: '',
                         department: course.department ?? '',
@@ -268,7 +299,8 @@ export function ClassDetailScreen() {
         const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
 
         // Check if it's the right day
-        if (currentDay !== day) return false;
+        if (currentDay !== classInfo.day) return false;
+        if (!classInfo.startTime || !classInfo.endTime) return false;
 
         // Parse start and end times
         const parseTime = (timeStr: string) => {
@@ -281,12 +313,12 @@ export function ClassDetailScreen() {
         };
 
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        const startMinutes = parseTime(startTime);
-        const endMinutes = parseTime(endTime);
+        const startMinutes = parseTime(classInfo.startTime);
+        const endMinutes = parseTime(classInfo.endTime);
 
         // Add 15 minutes grace period before class starts
         return currentMinutes >= (startMinutes - 15) && currentMinutes <= endMinutes;
-    }, [day, startTime, endTime]);
+    }, [classInfo.day, classInfo.startTime, classInfo.endTime]);
 
     const isAttendanceOpen = isAttendanceEnabled(classCode);
     const canStudentCheckIn = isClassActive && isAttendanceOpen && !hasCheckedIn;
@@ -485,6 +517,102 @@ export function ClassDetailScreen() {
         setLocationRef.current?.open();
     }, []);
 
+    // ── Class management (edit / delete / share) ─────────────────────────────
+    const isHOD = isHOC || isSuperAdmin;            // HOD: manages classes
+    const canEditLocation = isHOC || isLecturer || isSuperAdmin;
+    const canEditClass = isHOD || isLecturer;       // HOD + lecturer edit details
+    const canDeleteClass = isSuperAdmin;            // only superadmin deletes
+    const canShareStudents = isHOC || isSuperAdmin || isLecturer;
+    const canManage = canEditLocation || canEditClass || canDeleteClass || canShareStudents;
+
+    const handleLecturerAssigned = useCallback((assigned: AssignedLecturer) => {
+        setLecturer((prev) => ({
+            id: assigned.id,
+            name: assigned.name,
+            email: assigned.email,
+            department: prev?.department ?? '',
+            avatar: null,
+        }));
+    }, []);
+
+    const handleShareInvite = async (role: 'student' | 'lecturer') => {
+        setMenuVisible(false);
+        try {
+            const { data } = await inviteApi.create(classId, { role });
+            const token = data.invite.token;
+            const url = Linking.createURL(`join/${token}`);
+            const label = role === 'lecturer' ? 'as the lecturer' : 'as a member';
+            await Share.share({
+                message: `Join ${classInfo.code} — ${classInfo.name} ${label} on GeoTrack:\n${url}`,
+            });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not create the invite link.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        }
+    };
+
+    const handleEditLocation = () => {
+        setMenuVisible(false);
+        venuePickerRef.current?.open();
+    };
+
+    const handleOpenEditClass = () => {
+        setMenuVisible(false);
+        editClassRef.current?.open({
+            code: classInfo.code,
+            title: classInfo.name,
+            department: classInfo.department,
+            venue: courseVenue ?? '',
+            day: classInfo.day,
+            startTime: classInfo.startTime,
+            endTime: classInfo.endTime,
+        });
+    };
+
+    const handleSaveEditClass = useCallback(async (values: EditClassValues) => {
+        try {
+            await courseApi.update(classId, {
+                code: values.code,
+                title: values.title,
+                department: values.department || undefined,
+                venue: values.venue || undefined,
+                day: values.day || undefined,
+                start_time: values.startTime || undefined,
+                end_time: values.endTime || undefined,
+            });
+            setClassInfo((prev) => ({
+                ...prev,
+                code: values.code,
+                name: values.title,
+                department: values.department,
+                day: values.day,
+                startTime: values.startTime,
+                endTime: values.endTime,
+            }));
+            setCourseVenue(values.venue || null);
+            Toast.show({ type: 'success', text1: 'Class updated.', position: 'bottom' });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not update class.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+            throw err;
+        }
+    }, [classId]);
+
+    const handleConfirmDelete = async () => {
+        setDeleting(true);
+        try {
+            await courseApi.delete(classId);
+            setDeleteVisible(false);
+            Toast.show({ type: 'success', text1: 'Class deleted.', position: 'bottom' });
+            navigation.goBack();
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not delete class.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        } finally {
+            setDeleting(false);
+        }
+    };
+
     const handleStartSession = async () => {
         try {
             const { data } = await sessionApi.start(classId);
@@ -539,12 +667,17 @@ export function ClassDetailScreen() {
                             <Ionicons name="arrow-back" size={20} color="#181A20" />
                         </Pressable>
                         <View className="flex-1">
-                            <Text className="font-heading text-[22px] text-[#181A20]">{classCode}</Text>
-                            <Text className="text-[13px] text-[#8F94A4]">{className}</Text>
+                            <Text className="font-heading text-[22px] text-[#181A20]">{classInfo.code}</Text>
+                            <Text className="text-[13px] text-[#8F94A4]">{classInfo.name}</Text>
                         </View>
-                        <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/5">
-                            <Feather name="more-vertical" size={18} color="#5A5D6B" />
-                        </Pressable>
+                        {canManage && (
+                            <Pressable
+                                onPress={() => setMenuVisible(true)}
+                                className="h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/5"
+                            >
+                                <Feather name="more-vertical" size={18} color="#5A5D6B" />
+                            </Pressable>
+                        )}
                     </View>
                 </View>
 
@@ -572,7 +705,7 @@ export function ClassDetailScreen() {
                                 </View>
                                 <View className="ml-3">
                                     <Text className="text-[10px] text-[#B8BBC6]">Day</Text>
-                                    <Text className="font-medium text-[14px] text-[#181A20]">{day}</Text>
+                                    <Text className="font-medium text-[14px] text-[#181A20]">{classInfo.day || 'Not set'}</Text>
                                 </View>
                             </View>
                             {/* Time */}
@@ -582,7 +715,11 @@ export function ClassDetailScreen() {
                                 </View>
                                 <View className="ml-3">
                                     <Text className="text-[10px] text-[#B8BBC6]">Time</Text>
-                                    <Text className="font-medium text-[14px] text-[#181A20]">{startTime} - {endTime}</Text>
+                                    <Text className="font-medium text-[14px] text-[#181A20]">
+                                        {classInfo.startTime && classInfo.endTime
+                                            ? `${classInfo.startTime} - ${classInfo.endTime}`
+                                            : 'Not set'}
+                                    </Text>
                                 </View>
                             </View>
                         </View>
@@ -602,10 +739,35 @@ export function ClassDetailScreen() {
                                         {lecturer.department || lecturer.email || 'Lecturer'}
                                     </Text>
                                 </View>
-                                <View className="h-9 w-9 items-center justify-center rounded-full bg-[#F0EDFC]">
-                                    <Ionicons name="mail" size={16} color={PRIMARY_COLOR} />
-                                </View>
+                                {isHOD ? (
+                                    // Only the HOD can change an already-assigned lecturer.
+                                    <Pressable
+                                        onPress={() => assignLecturerRef.current?.open()}
+                                        className="h-9 w-9 items-center justify-center rounded-full bg-[#F0EDFC]"
+                                    >
+                                        <Ionicons name="create-outline" size={16} color={PRIMARY_COLOR} />
+                                    </Pressable>
+                                ) : (
+                                    <View className="h-9 w-9 items-center justify-center rounded-full bg-[#F0EDFC]">
+                                        <Ionicons name="mail" size={16} color={PRIMARY_COLOR} />
+                                    </View>
+                                )}
                             </View>
+                        ) : isHOD && !loadingData ? (
+                            // Unassigned: HOD can assign a lecturer.
+                            <Pressable
+                                onPress={() => assignLecturerRef.current?.open()}
+                                className="flex-row items-center active:opacity-70"
+                            >
+                                <View className="h-12 w-12 items-center justify-center rounded-full bg-[#E8F5E9]">
+                                    <Ionicons name="person-add" size={22} color="#4CAF50" />
+                                </View>
+                                <View className="ml-3 flex-1">
+                                    <Text className="font-medium text-[15px] text-[#181A20]">Assign a lecturer</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">Tap to choose from your institution</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                            </Pressable>
                         ) : (
                             <View className="flex-row items-center">
                                 <View className="h-12 w-12 items-center justify-center rounded-full bg-[#F1F2F6]">
@@ -954,35 +1116,198 @@ export function ClassDetailScreen() {
                 onAddStudent={handleAddStudent}
             />
 
-            {isHOC && (
+            {canEditLocation && (
                 <>
                     <VenuePickerBottomSheet
                         ref={venuePickerRef}
                         institutionId={user?.institutionId}
+                        currentClassId={classId}
+                        day={classInfo.day}
+                        startTime={classInfo.startTime}
+                        endTime={classInfo.endTime}
                         onSelectVenue={handleSelectExistingVenue}
                         onDrawBoundary={handleOpenBoundaryDraw}
                     />
                     <SetBoundaryBottomSheet
                         ref={setLocationRef}
-                        classCode={classCode}
+                        classCode={classInfo.code}
                         onSaveLocation={handleSaveLocation}
                         existingLocation={classLocation}
                     />
                 </>
             )}
 
+            {canEditClass && (
+                <EditClassBottomSheet ref={editClassRef} onSave={handleSaveEditClass} />
+            )}
+
+            {isHOD && (
+                <AssignLecturerBottomSheet
+                    ref={assignLecturerRef}
+                    courseId={classId}
+                    currentLecturerId={lecturer?.id ?? null}
+                    onAssigned={handleLecturerAssigned}
+                />
+            )}
+
             {classLocation && (
                 <LocationCheckBottomSheet
                     ref={locationCheckRef}
                     classLocation={classLocation}
-                    classCode={classCode}
-                    className={className}
+                    classCode={classInfo.code}
+                    className={classInfo.name}
                     isClassActive={isClassActive}
                     isAttendanceEnabled={isAttendanceOpen}
                     studentName="Student" // TODO: Replace with actual student name from auth
                     onCheckInSuccess={handleCheckInSuccess}
                 />
             )}
+
+            {/* Manage menu */}
+            <Modal
+                visible={menuVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setMenuVisible(false)}
+            >
+                <Pressable className="flex-1 bg-black/40 justify-end" onPress={() => setMenuVisible(false)}>
+                    <Pressable
+                        onPress={(e) => e.stopPropagation()}
+                        className="bg-white rounded-t-[24px] px-5 pt-3"
+                        style={{ paddingBottom: 32 }}
+                    >
+                        <View className="items-center mb-3">
+                            <View className="h-1 w-10 rounded-full bg-[#E2E0E8]" />
+                        </View>
+                        <Text className="font-heading text-[16px] text-[#181A20] mb-2">Manage Class</Text>
+
+                        {canShareStudents && (
+                            <Pressable
+                                onPress={() => handleShareInvite('student')}
+                                className="flex-row items-center py-4 border-b border-[#F1F2F6] active:opacity-70"
+                            >
+                                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#E8F5E9] mr-3">
+                                    <Ionicons name="share-social" size={20} color="#4CAF50" />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="font-medium text-[15px] text-[#181A20]">Share with Students</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">Send a link to join this class</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                            </Pressable>
+                        )}
+
+                        {isHOD && (
+                            <Pressable
+                                onPress={() => handleShareInvite('lecturer')}
+                                className="flex-row items-center py-4 border-b border-[#F1F2F6] active:opacity-70"
+                            >
+                                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#E3F2FD] mr-3">
+                                    <Ionicons name="person-add" size={20} color="#2196F3" />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="font-medium text-[15px] text-[#181A20]">Invite a Lecturer</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">Share a link to assign a lecturer</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                            </Pressable>
+                        )}
+
+                        {canEditLocation && (
+                            <Pressable
+                                onPress={handleEditLocation}
+                                className="flex-row items-center py-4 border-b border-[#F1F2F6] active:opacity-70"
+                            >
+                                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#E8F5E9] mr-3">
+                                    <Ionicons name="location" size={20} color="#4CAF50" />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="font-medium text-[15px] text-[#181A20]">Edit Location</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">Pick a venue or draw a boundary</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                            </Pressable>
+                        )}
+
+                        {canEditClass && (
+                            <Pressable
+                                onPress={handleOpenEditClass}
+                                className="flex-row items-center py-4 border-b border-[#F1F2F6] active:opacity-70"
+                            >
+                                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#F0EDFC] mr-3">
+                                    <Ionicons name="create-outline" size={20} color={PRIMARY_COLOR} />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="font-medium text-[15px] text-[#181A20]">Edit Class</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">Code, title, schedule and venue</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                            </Pressable>
+                        )}
+
+                        {canDeleteClass && (
+                            <Pressable
+                                onPress={() => { setMenuVisible(false); setDeleteVisible(true); }}
+                                className="flex-row items-center py-4 active:opacity-70"
+                            >
+                                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#FEECEC] mr-3">
+                                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="font-medium text-[15px] text-[#EF4444]">Delete Class</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">Permanently remove this class</Text>
+                                </View>
+                            </Pressable>
+                        )}
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
+            {/* Delete confirmation */}
+            <Modal
+                visible={deleteVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setDeleteVisible(false)}
+            >
+                <Pressable
+                    className="flex-1 bg-black/50 items-center justify-center px-6"
+                    onPress={() => !deleting && setDeleteVisible(false)}
+                >
+                    <Pressable onPress={(e) => e.stopPropagation()} className="w-full bg-white rounded-[24px] p-6">
+                        <View className="items-center mb-4">
+                            <View className="h-14 w-14 items-center justify-center rounded-full bg-[#FEECEC] mb-3">
+                                <Ionicons name="trash" size={26} color="#EF4444" />
+                            </View>
+                            <Text className="font-heading text-[18px] text-[#181A20] text-center">Delete {classInfo.code}?</Text>
+                            <Text className="text-[14px] text-[#8F94A4] mt-2 text-center">
+                                This permanently removes the class, its boundary and enrollments. This can't be undone.
+                            </Text>
+                        </View>
+                        <View className="flex-row gap-3 mt-2">
+                            <Pressable
+                                onPress={() => setDeleteVisible(false)}
+                                disabled={deleting}
+                                className="flex-1 h-14 items-center justify-center rounded-[14px] bg-[#F1F2F6]"
+                            >
+                                <Text className="font-medium text-[16px] text-[#5A5D6B]">Cancel</Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={handleConfirmDelete}
+                                disabled={deleting}
+                                className="flex-1 h-14 items-center justify-center rounded-[14px] bg-[#EF4444]"
+                                style={{ opacity: deleting ? 0.7 : 1 }}
+                            >
+                                {deleting ? (
+                                    <ActivityIndicator color="#fff" />
+                                ) : (
+                                    <Text className="font-medium text-[16px] text-white">Delete</Text>
+                                )}
+                            </Pressable>
+                        </View>
+                    </Pressable>
+                </Pressable>
+            </Modal>
         </SafeAreaView>
     );
 }

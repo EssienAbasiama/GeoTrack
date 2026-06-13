@@ -176,6 +176,10 @@ class CourseController extends Controller
             'department' => ['sometimes', 'string', 'max:128'],
             'level' => ['nullable', 'string', 'max:32'],
             'lecturer_id' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
+            'venue' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'day' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'start_time' => ['sometimes', 'nullable', 'string', 'max:8'],
+            'end_time' => ['sometimes', 'nullable', 'string', 'max:8'],
         ]);
 
         if (array_key_exists('lecturer_id', $validated) && !$user->isAdmin()) {

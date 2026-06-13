@@ -112,6 +112,7 @@ export default function App() {
         config: {
             screens: {
                 Register: 'register',
+                JoinClass: 'join/:token',
             },
         },
     };

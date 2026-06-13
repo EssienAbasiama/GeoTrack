@@ -18,6 +18,22 @@ export interface ApiInstitution {
     updated_at?: string;
 }
 
+// ─── Class invite / share link ────────────────────────────────────────────────
+export interface ApiClassInvite {
+    token: string;
+    role: 'student' | 'lecturer';
+    expires_at?: string | null;
+    course?: {
+        id: number;
+        code: string;
+        title: string;
+        department?: string | null;
+        venue?: string | null;
+        lecturer_name?: string | null;
+        institution?: { id: number; name: string; code: string } | null;
+    } | null;
+}
+
 // ─── Device ──────────────────────────────────────────────────────────────────
 export interface ApiDevice {
     id: number;

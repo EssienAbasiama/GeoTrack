@@ -21,6 +21,7 @@ import type {
     ApiAdminDashboard,
     ApiLecturer,
     ApiPushTokenResponse,
+    ApiClassInvite,
 } from '../types/api';
 
 // ─── Navigation ref (register in App.tsx: <NavigationContainer ref={navigationRef}>) ───
@@ -488,6 +489,25 @@ export const courseApi = {
     students: (courseId: number | string) =>
         unwrap<{ students: ApiCourseStudent[]; total_sessions?: number }>(
             apiClient.get(`/courses/${courseId}/students`),
+        ),
+};
+
+// ─── Class invite API ────────────────────────────────────────────────────────
+export const inviteApi = {
+    create: (
+        courseId: number | string,
+        body: { role: 'student' | 'lecturer'; expires_in_days?: number },
+    ) =>
+        unwrap<{ invite: ApiClassInvite }>(
+            apiClient.post(`/courses/${courseId}/invites`, body),
+        ),
+
+    get: (token: string) =>
+        unwrap<{ invite: ApiClassInvite }>(apiClient.get(`/invites/${token}`)),
+
+    accept: (token: string) =>
+        unwrap<{ role: 'student' | 'lecturer'; course: ApiCourse }>(
+            apiClient.post(`/invites/${token}/accept`, {}),
         ),
 };
 

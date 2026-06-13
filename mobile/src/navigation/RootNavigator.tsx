@@ -18,7 +18,10 @@ import { DeviceConflictScreen } from '../screens/DeviceConflictScreen';
 import { FaceEnrollmentScreen } from '../screens/FaceEnrollmentScreen';
 import { PresenceCheckScreen } from '../screens/PresenceCheckScreen';
 import { LecturerSessionScreen } from '../screens/LecturerSessionScreen';
+import { JoinClassScreen } from '../screens/JoinClassScreen';
 import { useAuth } from '../store/AuthContext';
+import { navigationRef } from '../services/apiClient';
+import { useEffect } from 'react';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -42,7 +45,17 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * - All screens defined upfront (React Navigation requirement)
  */
 export function RootNavigator() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, pendingInviteToken, setPendingInviteToken } = useAuth();
+
+    // Resume a class-invite link that was opened while signed out, once the
+    // user authenticates. Push JoinClass on top of the freshly-shown MainTabs.
+    useEffect(() => {
+        if (isAuthenticated && pendingInviteToken && navigationRef.isReady()) {
+            const token = pendingInviteToken;
+            setPendingInviteToken(null);
+            navigationRef.navigate('JoinClass', { token });
+        }
+    }, [isAuthenticated, pendingInviteToken, setPendingInviteToken]);
     /**
      * Wrapper component for Splash screen
      * Waits for AuthContext session restore to finish before navigating.
@@ -206,6 +219,13 @@ export function RootNavigator() {
             <Stack.Screen
                 name="LecturerSession"
                 component={LecturerSessionScreen}
+                options={{
+                    animation: 'default',
+                }}
+            />
+            <Stack.Screen
+                name="JoinClass"
+                component={JoinClassScreen}
                 options={{
                     animation: 'default',
                 }}

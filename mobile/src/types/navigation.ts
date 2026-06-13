@@ -78,6 +78,9 @@ export type RootStackParamList = {
     classCode: string;
     className: string;
   };
+  JoinClass: {
+    token: string;
+  };
 };
 
 /**

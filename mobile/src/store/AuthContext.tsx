@@ -64,6 +64,9 @@ interface AuthContextType {
     pendingRegistration: PendingRegistration | null;
     pendingEmail: string | null;
     bindStatus: BindStatus;
+    /** Invite token captured from a share link while signed out; resumed after auth. */
+    pendingInviteToken: string | null;
+    setPendingInviteToken: (token: string | null) => void;
     signIn: (email: string, password: string) => Promise<{ ok: boolean; unverified?: boolean; message?: string }>;
     signOut: () => Promise<void>;
     startRegistration: (data: PendingRegistration) => Promise<{ ok: boolean; message?: string }>;
@@ -125,6 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [pendingEmail, setPendingEmail] = useState<string | null>(null);
     const [passwordResetEmail, setPasswordResetEmail] = useState<string | null>(null);
     const [bindStatus, setBindStatus] = useState<BindStatus>('idle');
+    const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
 
     // ── Device binding helper ────────────────────────────────────────────────
     const handleBind = async (): Promise<BindDeviceResult> => {
@@ -362,6 +366,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             pendingRegistration,
             pendingEmail,
             bindStatus,
+            pendingInviteToken,
+            setPendingInviteToken,
             signIn,
             signOut,
             startRegistration,
@@ -372,7 +378,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             rebindDevice,
         }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [user, authLoading, isInitialising, pendingRegistration, pendingEmail, bindStatus],
+        [user, authLoading, isInitialising, pendingRegistration, pendingEmail, bindStatus, pendingInviteToken],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

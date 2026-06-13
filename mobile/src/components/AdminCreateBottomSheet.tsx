@@ -1,4 +1,4 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
     forwardRef,
     useCallback,
@@ -308,7 +308,7 @@ export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, Admi
                     </View>
                 </Pressable>
 
-                <Pressable onPress={() => setMode('lecturer')} className="mb-4 rounded-[20px] border-2 border-[#E8EAF1] bg-white p-5 active:bg-[#F5F6FA]">
+                <Pressable onPress={() => setMode('lecturer')} className="rounded-[20px] border-2 border-[#E8EAF1] bg-white p-5 active:bg-[#F5F6FA]">
                     <View className="flex-row items-center">
                         <View className="h-14 w-14 items-center justify-center rounded-[16px] bg-[#E8F5E9]">
                             <Ionicons name="person-add" size={26} color="#4CAF50" />
@@ -316,19 +316,6 @@ export const AdminCreateBottomSheet = forwardRef<AdminCreateBottomSheetRef, Admi
                         <View className="ml-4 flex-1">
                             <Text className="font-heading text-[18px] text-[#181A20]">Create Lecturer</Text>
                             <Text className="text-[13px] text-[#8F94A4] mt-1">Add a new lecturer to the system</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={22} color="#8F94A4" />
-                    </View>
-                </Pressable>
-
-                <Pressable className="rounded-[20px] border-2 border-[#E8EAF1] bg-white p-5 active:bg-[#F5F6FA]">
-                    <View className="flex-row items-center">
-                        <View className="h-14 w-14 items-center justify-center rounded-[16px] bg-[#FFF3E0]">
-                            <MaterialCommunityIcons name="link-variant" size={26} color="#FF9800" />
-                        </View>
-                        <View className="ml-4 flex-1">
-                            <Text className="font-heading text-[18px] text-[#181A20]">Assign Lecturer</Text>
-                            <Text className="text-[13px] text-[#8F94A4] mt-1">Assign a lecturer to a class</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={22} color="#8F94A4" />
                     </View>

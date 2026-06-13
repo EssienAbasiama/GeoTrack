@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CourseController;
+use App\Http\Controllers\Api\CourseInviteController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\FaceProfileController;
@@ -80,6 +81,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/courses/{course}/self-enroll', [CourseController::class, 'selfEnroll']);
         Route::delete('/courses/{course}/enroll/{userId}', [CourseController::class, 'unenroll']);
         Route::get('/courses/{course}/students', [CourseController::class, 'students']);
+
+        // Class invites / share links
+        Route::post('/courses/{course}/invites', [CourseInviteController::class, 'store']);
+        Route::get('/invites/{token}', [CourseInviteController::class, 'show']);
+        Route::post('/invites/{token}/accept', [CourseInviteController::class, 'accept']);
 
         // Geofences
         Route::get('/courses/{course}/geofence', [GeofenceController::class, 'show']);

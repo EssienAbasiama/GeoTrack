@@ -18,11 +18,17 @@ class LecturerController extends Controller
             ], 403);
         }
 
-        $lecturers = User::query()
+        $query = User::query()
             ->where('role', 'lecturer')
             ->withCount(['lecturerCourses as courses_count'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'created_at']);
+            ->orderBy('name');
+
+        // Scope to the HOD's institution; superadmins (no institution) see all.
+        if (!$request->user()->isSuperAdmin() && $request->user()->institution_id) {
+            $query->where('institution_id', $request->user()->institution_id);
+        }
+
+        $lecturers = $query->get(['id', 'name', 'email', 'role', 'created_at']);
 
         return response()->json([
             'message' => 'Lecturers retrieved.',

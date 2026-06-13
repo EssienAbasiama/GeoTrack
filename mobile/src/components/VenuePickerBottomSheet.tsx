@@ -44,6 +44,30 @@ const hasUsableBoundary = (c: ApiCourse): boolean => {
     );
 };
 
+/** Minutes since midnight from "HH:MM", "H:MM AM/PM", etc. Null if unparseable. */
+const parseTimeToMinutes = (raw?: string | null): number | null => {
+    if (!raw) return null;
+    const m = raw.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (!m) return null;
+    let h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    const ap = m[3]?.toUpperCase();
+    if (ap === 'PM' && h !== 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+};
+
+/** Half-open interval overlap test. */
+const timesOverlap = (aStart: number, aEnd: number, bStart: number, bEnd: number): boolean =>
+    aStart < bEnd && bStart < aEnd;
+
+interface VenueEntry {
+    name: string;
+    course: ApiCourse;        // representative course whose geofence we apply
+    isPolygon: boolean;
+    conflictWith?: string;    // class code already using this venue this period
+}
+
 export interface VenuePickerBottomSheetRef {
     open: () => void;
     close: () => void;
@@ -51,12 +75,18 @@ export interface VenuePickerBottomSheetRef {
 
 interface VenuePickerBottomSheetProps {
     institutionId?: number | null;
+    /** The class being given a location — excluded from conflict checks. */
+    currentClassId?: string | number | null;
+    /** Current class schedule, used to flag venues already in use this period. */
+    day?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
     onSelectVenue: (location: ClassBoundary) => void;
     onDrawBoundary: () => void;
 }
 
 export const VenuePickerBottomSheet = forwardRef<VenuePickerBottomSheetRef, VenuePickerBottomSheetProps>(
-    ({ institutionId, onSelectVenue, onDrawBoundary }, ref) => {
+    ({ institutionId, currentClassId, day, startTime, endTime, onSelectVenue, onDrawBoundary }, ref) => {
         const bottomSheetRef = useRef<BottomSheetModal>(null);
         const insets = useSafeAreaInsets();
 
@@ -79,16 +109,9 @@ export const VenuePickerBottomSheet = forwardRef<VenuePickerBottomSheetRef, Venu
                         const scoped = institutionId
                             ? all.filter((c) => c.institution_id === institutionId)
                             : all;
-                        // Keep only courses with a saved boundary, deduped by venue name.
-                        const seen = new Set<string>();
-                        const venues = scoped.filter((c) => {
-                            if (!hasUsableBoundary(c)) return false;
-                            const key = venueNameOf(c).toLowerCase();
-                            if (seen.has(key)) return false;
-                            seen.add(key);
-                            return true;
-                        });
-                        setCourses(venues);
+                        // Keep every course with a saved boundary; grouping/dedup
+                        // happens in `venueEntries` so we can detect schedule clashes.
+                        setCourses(scoped.filter(hasUsableBoundary));
                     })
                     .catch(() => {
                         Toast.show({ type: 'error', text1: 'Could not load venues.', position: 'bottom' });
@@ -98,20 +121,80 @@ export const VenuePickerBottomSheet = forwardRef<VenuePickerBottomSheetRef, Venu
             close: () => bottomSheetRef.current?.dismiss(),
         }));
 
-        const filteredCourses = useMemo(() => {
-            const q = searchQuery.trim().toLowerCase();
-            if (!q) return courses;
-            return courses.filter(
-                (c) =>
-                    venueNameOf(c).toLowerCase().includes(q) ||
-                    c.code.toLowerCase().includes(q) ||
-                    c.title.toLowerCase().includes(q),
-            );
-        }, [courses, searchQuery]);
+        // Group courses by venue name, flagging any whose other occupants clash
+        // with the current class's day + time slot.
+        const venueEntries = useMemo<VenueEntry[]>(() => {
+            const curDay = day?.trim().toLowerCase();
+            const curStart = parseTimeToMinutes(startTime);
+            const curEnd = parseTimeToMinutes(endTime);
+            const canCheckClash = Boolean(curDay) && curStart != null && curEnd != null;
+            const currentId = currentClassId != null ? String(currentClassId) : null;
 
-        const handlePickCourse = useCallback(
-            (course: ApiCourse) => {
-                const fence = course.geofence;
+            const groups = new Map<string, ApiCourse[]>();
+            for (const c of courses) {
+                const key = venueNameOf(c).toLowerCase();
+                const arr = groups.get(key);
+                if (arr) arr.push(c);
+                else groups.set(key, [c]);
+            }
+
+            const entries: VenueEntry[] = [];
+            for (const group of groups.values()) {
+                const rep = group[0];
+                let conflictWith: string | undefined;
+
+                if (canCheckClash) {
+                    for (const c of group) {
+                        if (currentId && String(c.id) === currentId) continue;
+                        const cDay = c.day?.trim().toLowerCase();
+                        const cStart = parseTimeToMinutes(c.start_time);
+                        const cEnd = parseTimeToMinutes(c.end_time);
+                        if (
+                            cDay === curDay &&
+                            cStart != null &&
+                            cEnd != null &&
+                            timesOverlap(curStart!, curEnd!, cStart, cEnd)
+                        ) {
+                            conflictWith = c.code;
+                            break;
+                        }
+                    }
+                }
+
+                entries.push({
+                    name: venueNameOf(rep),
+                    course: rep,
+                    isPolygon: (rep.geofence?.polygon?.length ?? 0) >= 3,
+                    conflictWith,
+                });
+            }
+
+            return entries.sort((a, b) => a.name.localeCompare(b.name));
+        }, [courses, day, startTime, endTime, currentClassId]);
+
+        const filteredVenues = useMemo(() => {
+            const q = searchQuery.trim().toLowerCase();
+            if (!q) return venueEntries;
+            return venueEntries.filter(
+                (v) =>
+                    v.name.toLowerCase().includes(q) ||
+                    v.course.code.toLowerCase().includes(q) ||
+                    v.course.title.toLowerCase().includes(q),
+            );
+        }, [venueEntries, searchQuery]);
+
+        const handlePickVenue = useCallback(
+            (entry: VenueEntry) => {
+                if (entry.conflictWith) {
+                    Toast.show({
+                        type: 'info',
+                        text1: `${entry.name} is in use this period`,
+                        text2: `Booked by ${entry.conflictWith} at this time.`,
+                        position: 'bottom',
+                    });
+                    return;
+                }
+                const fence = entry.course.geofence;
                 if (!fence) return;
                 const polygon = fence.polygon ?? undefined;
                 const hasPolygon = Array.isArray(polygon) && polygon.length >= 3;
@@ -120,7 +203,7 @@ export const VenuePickerBottomSheet = forwardRef<VenuePickerBottomSheetRef, Venu
                     longitude: fence.center_lng ?? polygon?.[0]?.longitude ?? 0,
                     radius: fence.radius_m ?? 50,
                     polygonCoords: hasPolygon ? polygon : undefined,
-                    name: venueNameOf(course),
+                    name: entry.name,
                 };
                 bottomSheetRef.current?.dismiss();
                 onSelectVenue(boundary);
@@ -221,31 +304,59 @@ export const VenuePickerBottomSheet = forwardRef<VenuePickerBottomSheetRef, Venu
                                 <ActivityIndicator size="small" color={PRIMARY_COLOR} />
                                 <Text className="text-[13px] text-[#8F94A4] mt-2">Loading venues...</Text>
                             </View>
-                        ) : filteredCourses.length > 0 ? (
+                        ) : filteredVenues.length > 0 ? (
                             <View>
                                 <Text className="text-[12px] text-[#8F94A4] mb-3">
-                                    {filteredCourses.length} venue{filteredCourses.length !== 1 ? 's' : ''} found
+                                    {filteredVenues.length} venue{filteredVenues.length !== 1 ? 's' : ''} found
                                 </Text>
-                                {filteredCourses.map((course) => {
-                                    const isPolygon = (course.geofence?.polygon?.length ?? 0) >= 3;
+                                {filteredVenues.map((entry) => {
+                                    const inUse = Boolean(entry.conflictWith);
                                     return (
                                         <Pressable
-                                            key={course.id}
-                                            onPress={() => handlePickCourse(course)}
-                                            className="flex-row items-center p-3 rounded-[14px] bg-white mb-2 border border-[#E8EAF1] active:bg-[#F5F6FA]"
+                                            key={entry.course.id}
+                                            onPress={() => handlePickVenue(entry)}
+                                            disabled={inUse}
+                                            className={
+                                                inUse
+                                                    ? 'flex-row items-center p-3 rounded-[14px] bg-[#FBFBFC] mb-2 border border-[#EFEFF3]'
+                                                    : 'flex-row items-center p-3 rounded-[14px] bg-white mb-2 border border-[#E8EAF1] active:bg-[#F5F6FA]'
+                                            }
                                         >
-                                            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#E8F5E9]">
-                                                <Ionicons name={isPolygon ? 'map' : 'location'} size={20} color="#4CAF50" />
+                                            <View
+                                                className="h-11 w-11 items-center justify-center rounded-full"
+                                                style={{ backgroundColor: inUse ? '#FEECEC' : '#E8F5E9' }}
+                                            >
+                                                <Ionicons
+                                                    name={inUse ? 'lock-closed' : entry.isPolygon ? 'map' : 'location'}
+                                                    size={20}
+                                                    color={inUse ? '#EF4444' : '#4CAF50'}
+                                                />
                                             </View>
                                             <View className="ml-3 flex-1">
-                                                <Text className="font-medium text-[15px] text-[#181A20]" numberOfLines={1}>
-                                                    {venueNameOf(course)}
+                                                <Text
+                                                    className="font-medium text-[15px]"
+                                                    style={{ color: inUse ? '#A0A3AE' : '#181A20' }}
+                                                    numberOfLines={1}
+                                                >
+                                                    {entry.name}
                                                 </Text>
-                                                <Text className="text-[12px] text-[#8F94A4] mt-0.5" numberOfLines={1}>
-                                                    {course.code} • {course.title}
-                                                </Text>
+                                                {inUse ? (
+                                                    <Text className="text-[12px] text-[#EF4444] mt-0.5" numberOfLines={1}>
+                                                        In use this period · {entry.conflictWith}
+                                                    </Text>
+                                                ) : (
+                                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5" numberOfLines={1}>
+                                                        {entry.course.code} • {entry.course.title}
+                                                    </Text>
+                                                )}
                                             </View>
-                                            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+                                            {inUse ? (
+                                                <View className="px-2 py-1 rounded-full bg-[#FEECEC]">
+                                                    <Text className="text-[10px] font-medium text-[#EF4444]">Busy</Text>
+                                                </View>
+                                            ) : (
+                                                <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+                                            )}
                                         </Pressable>
                                     );
                                 })}

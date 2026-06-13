@@ -17,8 +17,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { BlurView } from 'expo-blur';
 import Toast from 'react-native-toast-message';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { RootStackParamList } from '../types/navigation';
-import { attendanceApi, geofenceApi, sessionApi } from '../services/apiClient';
+import { attendanceApi, faceApi, geofenceApi, sessionApi } from '../services/apiClient';
 import type { ApiGeofence, ApiSession } from '../types/api';
 import { notifyCheckInSuccess } from '../services/notifications';
 
@@ -85,6 +86,7 @@ export function CheckInScreen({ route, navigation }: Props) {
     const mapRef = useRef<MapView | null>(null);
     const cameraRef = useRef<CameraView | null>(null);
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+    const isFocused = useIsFocused();
 
     const [loading, setLoading] = useState(true);
     const [session, setSession] = useState<ApiSession | null>(null);
@@ -97,6 +99,8 @@ export function CheckInScreen({ route, navigation }: Props) {
     const [submitting, setSubmitting] = useState(false);
     const [showCamera, setShowCamera] = useState(false);
     const [success, setSuccess] = useState(false);
+    // null = still checking; true/false = enrolled state of the student's face.
+    const [faceEnrolled, setFaceEnrolled] = useState<boolean | null>(null);
 
     const sheetY = useRef(new Animated.Value(120)).current;
     const successScale = useRef(new Animated.Value(0)).current;
@@ -132,6 +136,18 @@ export function CheckInScreen({ route, navigation }: Props) {
             bounciness: 7,
         }).start();
     }, [sheetY]);
+
+    // Face enrollment status — refreshed whenever the screen regains focus, so
+    // returning from the enrollment screen flips the gate without a manual reload.
+    useEffect(() => {
+        if (!isFocused) return;
+        let mounted = true;
+        faceApi
+            .status()
+            .then(({ data }) => { if (mounted) setFaceEnrolled(Boolean(data.profile)); })
+            .catch(() => { if (mounted) setFaceEnrolled(false); });
+        return () => { mounted = false; };
+    }, [isFocused]);
 
     // ── Location ─────────────────────────────────────────────────────────────
     const startLocation = useCallback(async () => {
@@ -215,9 +231,15 @@ export function CheckInScreen({ route, navigation }: Props) {
 
             setTimeout(() => navigation.goBack(), 1400);
         } catch (err) {
-            const msg =
-                (err as any)?.response?.data?.message ??
-                'Check-in failed. Try again.';
+            const data = (err as any)?.response?.data;
+            const msg = data?.message ?? 'Check-in failed. Try again.';
+            // Backend says the student needs to enroll their face first.
+            if (data?.data?.face_enrollment_required) {
+                setFaceEnrolled(false);
+                Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+                navigation.navigate('FaceEnrollment');
+                return;
+            }
             Toast.show({ type: 'error', text1: msg, position: 'bottom' });
         } finally {
             setSubmitting(false);
@@ -227,23 +249,24 @@ export function CheckInScreen({ route, navigation }: Props) {
     const handleCheckIn = async () => {
         if (!session || !userLocation || submitting) return;
 
-        if (session.mode === 'face_recognition') {
-            if (!cameraPermission?.granted) {
-                const result = await requestCameraPermission();
-                if (!result.granted) {
-                    Toast.show({
-                        type: 'error',
-                        text1: 'Camera permission is required for this class.',
-                        position: 'bottom',
-                    });
-                    return;
-                }
-            }
-            setShowCamera(true);
+        // Identity check: a face must be enrolled and a live selfie captured.
+        if (faceEnrolled === false) {
+            navigation.navigate('FaceEnrollment');
             return;
         }
 
-        await submitCheckIn();
+        if (!cameraPermission?.granted) {
+            const result = await requestCameraPermission();
+            if (!result.granted) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Camera permission is required to verify your face.',
+                    position: 'bottom',
+                });
+                return;
+            }
+        }
+        setShowCamera(true);
     };
 
     const handleCapture = async () => {
@@ -527,40 +550,56 @@ export function CheckInScreen({ route, navigation }: Props) {
                                     </Text>
                                     <Text className="text-[12px] text-[#8F94A4]">{className}</Text>
                                 </View>
-                                {session.mode === 'face_recognition' && (
-                                    <View className="rounded-full bg-[#F0EDFC] px-3 py-1">
-                                        <Text className="text-[11px] font-medium text-[#6343cc]">
-                                            Face
-                                        </Text>
-                                    </View>
-                                )}
+                                <View className="flex-row items-center rounded-full bg-[#F0EDFC] px-3 py-1">
+                                    <Ionicons name="scan-outline" size={13} color="#6343cc" />
+                                    <Text className="ml-1 text-[11px] font-medium text-[#6343cc]">
+                                        Face check
+                                    </Text>
+                                </View>
                             </View>
 
-                            <Pressable
-                                onPress={handleCheckIn}
-                                disabled={submitting || !insideFence || !userLocation}
-                                className="h-12 items-center justify-center rounded-full flex-row"
-                                style={{
-                                    backgroundColor: insideFence ? PRIMARY : '#C7C9D2',
-                                }}
-                            >
-                                {submitting ? (
-                                    <ActivityIndicator color="#FFFFFF" />
-                                ) : (
-                                    <>
-                                        <MaterialCommunityIcons
-                                            name="account-check"
-                                            size={20}
-                                            color="#FFFFFF"
-                                        />
-                                        <Text className="ml-2 font-medium text-[15px] text-white">
-                                            {session.mode === 'face_recognition'
-                                                ? 'Take selfie & check in'
-                                                : 'Check in'}
+                            {faceEnrolled === false ? (
+                                // Identity gate — must enroll a reference face first.
+                                <>
+                                    <View className="flex-row items-start rounded-[14px] bg-[#FFF8E1] border border-[#FFE082] px-4 py-3 mb-3">
+                                        <Ionicons name="information-circle" size={18} color="#F59E0B" style={{ marginTop: 1 }} />
+                                        <Text className="ml-2 flex-1 text-[12px] text-[#92400E] leading-[17px]">
+                                            To confirm it's really you, enroll your face once. You'll then verify with a quick selfie at every check-in.
                                         </Text>
-                                    </>
-                                )}
-                            </Pressable>
+                                    </View>
+                                    <Pressable
+                                        onPress={() => navigation.navigate('FaceEnrollment')}
+                                        className="h-12 items-center justify-center rounded-full flex-row bg-[#6343cc]"
+                                    >
+                                        <MaterialCommunityIcons name="face-recognition" size={20} color="#FFFFFF" />
+                                        <Text className="ml-2 font-medium text-[15px] text-white">Enroll your face</Text>
+                                    </Pressable>
+                                </>
+                            ) : (
+                                <Pressable
+                                    onPress={handleCheckIn}
+                                    disabled={submitting || !insideFence || !userLocation || faceEnrolled === null}
+                                    className="h-12 items-center justify-center rounded-full flex-row"
+                                    style={{
+                                        backgroundColor: insideFence && faceEnrolled !== null ? PRIMARY : '#C7C9D2',
+                                    }}
+                                >
+                                    {submitting ? (
+                                        <ActivityIndicator color="#FFFFFF" />
+                                    ) : (
+                                        <>
+                                            <MaterialCommunityIcons
+                                                name="face-recognition"
+                                                size={20}
+                                                color="#FFFFFF"
+                                            />
+                                            <Text className="ml-2 font-medium text-[15px] text-white">
+                                                {faceEnrolled === null ? 'Preparing…' : 'Verify face & check in'}
+                                            </Text>
+                                        </>
+                                    )}
+                                </Pressable>
+                            )}
                         </>
                     )}
                 </Animated.View>
