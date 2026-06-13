@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\FaceProfileController;
 use App\Http\Controllers\Api\GeofenceController;
+use App\Http\Controllers\Api\InstitutionController;
 use App\Http\Controllers\Api\LecturerController;
 use App\Http\Controllers\Api\PresenceCheckController;
 use App\Http\Controllers\Api\PushTokenController;
@@ -36,16 +37,24 @@ Route::prefix('auth')->group(function () {
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
 
+// Public institution list — needed during registration before a token exists.
+Route::get('/institutions', [InstitutionController::class, 'index']);
+
 // ── Protected routes (require Sanctum token) ─────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-    // Return the authenticated user
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+
+    // ── Institutions (write operations — superadmin only) ──────────────────
+    Route::post('/institutions', [InstitutionController::class, 'store']);
+    Route::get('/institutions/{institution}', [InstitutionController::class, 'show']);
+    Route::patch('/institutions/{institution}', [InstitutionController::class, 'update']);
+    Route::delete('/institutions/{institution}', [InstitutionController::class, 'destroy']);
 
     // ── Device binding (not behind bound.device — needed to bind) ──────────
     Route::prefix('devices')->group(function () {

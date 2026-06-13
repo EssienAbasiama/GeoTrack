@@ -215,7 +215,7 @@ export function ProfileScreen() {
                 </View>
 
                 {/* Role Selector (Testing) */}
-                <View className="mb-6 rounded-[20px] border-2 border-dashed border-[#FFB74D] bg-[#FFF8E1] p-4">
+                {/* <View className="mb-6 rounded-[20px] border-2 border-dashed border-[#FFB74D] bg-[#FFF8E1] p-4">
                     <View className="flex-row items-center mb-3">
                         <Ionicons name="flask" size={18} color="#FF9800" />
                         <Text className="ml-2 font-heading text-[16px] text-[#E65100]">Test Mode: Role Selector</Text>
@@ -266,7 +266,7 @@ export function ProfileScreen() {
                             </View>
                         </Pressable>
                     ))}
-                </View>
+                </View> */}
 
                 <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Notifications</Text>
 

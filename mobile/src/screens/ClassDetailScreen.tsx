@@ -1,15 +1,17 @@
 import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Pressable, Text, TextInput, View, Image } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { useRole } from '../store/RoleContext';
+import { useAuth } from '../store/AuthContext';
 import { useAttendanceControl } from '../store/AttendanceControlContext';
 import { AddStudentBottomSheet, type AddStudentBottomSheetRef } from '../components/AddStudentBottomSheet';
 import { SetBoundaryBottomSheet, type SetBoundaryBottomSheetRef, type ClassBoundary } from '../components/SetBoundaryBottomSheet';
+import { VenuePickerBottomSheet, type VenuePickerBottomSheetRef } from '../components/VenuePickerBottomSheet';
 import { LocationCheckBottomSheet, type LocationCheckBottomSheetRef } from '../components/LocationCheckBottomSheet';
 import { celebrationPattern } from '../utils/haptics';
 import { notifyCheckInSuccess } from '../services/notifications';
@@ -24,70 +26,61 @@ interface Student {
     name: string;
     matricNo: string;
     email: string;
-    avatar: string;
+    avatar?: string | null;
     attendanceRate: number;
 }
 
-// Mock lecturer data
-const MOCK_LECTURER = {
-    id: 'lec1',
-    name: 'Dr. Adewale Johnson',
-    email: 'adewale.johnson@lecturer.edu.ng',
-    avatar: 'https://randomuser.me/api/portraits/men/75.jpg',
-    department: 'Electrical Engineering',
-};
+interface Lecturer {
+    name: string;
+    email: string;
+    department: string;
+    avatar?: string | null;
+}
 
-// Mock students data
-const MOCK_STUDENTS: Student[] = [
-    {
-        id: '1',
-        name: 'Abasiama Essien',
-        matricNo: '180404001',
-        email: 'abasiama.essien@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-        attendanceRate: 95,
-    },
-    {
-        id: '2',
-        name: 'Chioma Okonkwo',
-        matricNo: '180404002',
-        email: 'chioma.okonkwo@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-        attendanceRate: 88,
-    },
-    {
-        id: '3',
-        name: 'Emeka Nwosu',
-        matricNo: '180404003',
-        email: 'emeka.nwosu@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/67.jpg',
-        attendanceRate: 92,
-    },
-    {
-        id: '4',
-        name: 'Fatima Ibrahim',
-        matricNo: '180404004',
-        email: 'fatima.ibrahim@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/28.jpg',
-        attendanceRate: 78,
-    },
-    {
-        id: '5',
-        name: 'Oluwaseun Adeyemi',
-        matricNo: '180404005',
-        email: 'oluwaseun.adeyemi@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/45.jpg',
-        attendanceRate: 100,
-    },
-    {
-        id: '6',
-        name: 'Ngozi Eze',
-        matricNo: '180404006',
-        email: 'ngozi.eze@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/52.jpg',
-        attendanceRate: 85,
-    },
-];
+// ─── Avatar helpers ──────────────────────────────────────────────────────────
+const AVATAR_COLORS = ['#6343cc', '#0284C7', '#16A34A', '#CA8A04', '#E11D48', '#9333EA', '#0891B2', '#DB2777'];
+
+function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function avatarColor(seed: string): string {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+/** Shows the photo when a URL exists, otherwise a colored initials circle. */
+function Avatar({ name, uri, size = 48 }: { name: string; uri?: string | null; size?: number }) {
+    if (uri) {
+        return (
+            <Image
+                source={{ uri }}
+                style={{ width: size, height: size, borderRadius: size / 2 }}
+                resizeMode="cover"
+            />
+        );
+    }
+    return (
+        <View
+            style={{
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: avatarColor(name),
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}
+        >
+            <Text style={{ color: '#fff', fontSize: size * 0.38, fontFamily: 'WorkSans_600SemiBold' }}>
+                {getInitials(name)}
+            </Text>
+        </View>
+    );
+}
 
 function StudentCard({
     item,
@@ -140,11 +133,7 @@ function StudentCard({
                 className="mb-3 rounded-[16px] bg-white p-4 flex-row items-center shadow-sm shadow-black/5"
                 style={({ pressed }) => canViewDetails ? { opacity: pressed ? 0.7 : 1 } : {}}
             >
-                <Image
-                    source={{ uri: item.avatar }}
-                    className="h-12 w-12 rounded-full"
-                    resizeMode="cover"
-                />
+                <Avatar name={item.name} uri={item.avatar} size={48} />
                 <View className="ml-3 flex-1">
                     <Text className="font-heading text-[15px] text-[#181A20]">{item.name}</Text>
                     <Text className="text-[12px] text-[#8F94A4] mt-0.5">{item.matricNo}</Text>
@@ -176,6 +165,7 @@ export function ClassDetailScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const route = useRoute<RouteProp<RootStackParamList, 'ClassDetail'>>();
     const { isHOC, isSuperAdmin, isStudent, isLecturer } = useRole();
+    const { user } = useAuth();
     const { isAttendanceEnabled, setAttendanceEnabled } = useAttendanceControl();
     const { classId, classCode, className, venue, day, startTime, endTime } = route.params;
 
@@ -183,11 +173,15 @@ export function ClassDetailScreen() {
     const fabBounce = useRef(new Animated.Value(1)).current;
     const locationFabBounce = useRef(new Animated.Value(1)).current;
     const addStudentRef = useRef<AddStudentBottomSheetRef>(null);
+    const venuePickerRef = useRef<VenuePickerBottomSheetRef>(null);
     const setLocationRef = useRef<SetBoundaryBottomSheetRef>(null);
     const locationCheckRef = useRef<LocationCheckBottomSheetRef>(null);
     const searchInputRef = useRef<TextInput>(null);
 
-    const [students, setStudents] = useState(MOCK_STUDENTS);
+    const [students, setStudents] = useState<Student[]>([]);
+    const [lecturer, setLecturer] = useState<Lecturer | null>(null);
+    const [loadingData, setLoadingData] = useState(true);
+    const [courseVenue, setCourseVenue] = useState<string | null>(venue ?? null);
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [hasCheckedIn, setHasCheckedIn] = useState(false);
@@ -196,37 +190,50 @@ export function ClassDetailScreen() {
     const checkInPulse = useRef(new Animated.Value(1)).current;
     const fabRotate = useRef(new Animated.Value(0)).current;
 
-    // Class boundary loaded from backend. Falls back to FUNAAB-Abeokuta for
-    // dev so the map renders something while geofence isn't configured yet.
-    const [classLocation, setClassLocation] = useState<ClassBoundary | null>({
-        latitude: 7.2266,
-        longitude: 3.4400,
-        radius: 50,
-        name: venue,
-    });
+    // Class boundary loaded from the backend geofence; null until configured.
+    const [classLocation, setClassLocation] = useState<ClassBoundary | null>(null);
 
     // ── Backend wiring ───────────────────────────────────────────────────────
     useEffect(() => {
         let mounted = true;
         (async () => {
             try {
-                const [studentsRes, fenceRes, sessionRes] = await Promise.all([
+                const [courseRes, studentsRes, fenceRes, sessionRes] = await Promise.all([
+                    courseApi.get(classId).catch(() => null),
                     courseApi.students(classId).catch(() => null),
                     geofenceApi.get(classId).catch(() => null),
                     sessionApi.active(classId).catch(() => null),
                 ]);
                 if (!mounted) return;
 
-                if (studentsRes?.data?.students?.length) {
+                const course = courseRes?.data?.course;
+                if (course?.venue?.trim()) {
+                    setCourseVenue(course.venue.trim());
+                }
+                if (course?.lecturer) {
+                    setLecturer({
+                        name: course.lecturer.name,
+                        email: course.lecturer.email,
+                        department: course.department ?? '',
+                        avatar: null,
+                    });
+                } else if (course?.lecturer_name) {
+                    setLecturer({
+                        name: course.lecturer_name,
+                        email: '',
+                        department: course.department ?? '',
+                        avatar: null,
+                    });
+                }
+
+                if (studentsRes?.data?.students) {
                     setStudents(
-                        studentsRes.data.students.map((s: ApiCourseStudent, i: number) => ({
+                        studentsRes.data.students.map((s: ApiCourseStudent) => ({
                             id: String(s.id),
                             name: s.name,
                             matricNo: s.matric_no ?? '',
                             email: s.email,
-                            avatar:
-                                s.avatar_url ??
-                                `https://randomuser.me/api/portraits/${i % 2 === 0 ? 'men' : 'women'}/${(i * 7) % 99}.jpg`,
+                            avatar: s.avatar_url ?? null,
                             attendanceRate: s.attendance_rate ?? 0,
                         })),
                     );
@@ -247,7 +254,9 @@ export function ClassDetailScreen() {
                     setActiveSessionId(sessionRes.data.session.id);
                 }
             } catch {
-                // Soft-fail: keep mock students/boundary.
+                // Soft-fail: leave lists empty rather than showing stale data.
+            } finally {
+                if (mounted) setLoadingData(false);
             }
         })();
         return () => { mounted = false; };
@@ -433,7 +442,7 @@ export function ClassDetailScreen() {
 
         const newStudent: Student = {
             ...student,
-            avatar: `https://randomuser.me/api/portraits/${Math.random() > 0.5 ? 'men' : 'women'}/${Math.floor(Math.random() * 70)}.jpg`,
+            avatar: null,
             attendanceRate: 0,
         };
         setStudents((prev) => [...prev, newStudent]);
@@ -467,6 +476,14 @@ export function ClassDetailScreen() {
             Toast.show({ type: 'error', text1: msg, position: 'bottom' });
         }
     };
+
+    const handleSelectExistingVenue = useCallback((location: ClassBoundary) => {
+        handleSaveLocation(location);
+    }, []);
+
+    const handleOpenBoundaryDraw = useCallback(() => {
+        setLocationRef.current?.open();
+    }, []);
 
     const handleStartSession = async () => {
         try {
@@ -543,7 +560,9 @@ export function ClassDetailScreen() {
                                 </View>
                                 <View className="ml-3">
                                     <Text className="text-[10px] text-[#B8BBC6]">Venue</Text>
-                                    <Text className="font-medium text-[14px] text-[#181A20]">{venue}</Text>
+                                    <Text className="font-medium text-[14px] text-[#181A20]">
+                                        {courseVenue?.trim() || classLocation?.name?.trim() || 'Not set'}
+                                    </Text>
                                 </View>
                             </View>
                             {/* Day */}
@@ -574,20 +593,31 @@ export function ClassDetailScreen() {
                 <View className="px-5 mb-4">
                     <View className="rounded-[16px] bg-white p-4 shadow-sm shadow-black/5">
                         <Text className="text-[12px] text-[#8F94A4] mb-3">Assigned Lecturer</Text>
-                        <View className="flex-row items-center">
-                            <Image
-                                source={{ uri: MOCK_LECTURER.avatar }}
-                                className="h-12 w-12 rounded-full"
-                                resizeMode="cover"
-                            />
-                            <View className="ml-3 flex-1">
-                                <Text className="font-heading text-[16px] text-[#181A20]">{MOCK_LECTURER.name}</Text>
-                                <Text className="text-[12px] text-[#8F94A4] mt-0.5">{MOCK_LECTURER.department}</Text>
+                        {lecturer ? (
+                            <View className="flex-row items-center">
+                                <Avatar name={lecturer.name} uri={lecturer.avatar} size={48} />
+                                <View className="ml-3 flex-1">
+                                    <Text className="font-heading text-[16px] text-[#181A20]">{lecturer.name}</Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                        {lecturer.department || lecturer.email || 'Lecturer'}
+                                    </Text>
+                                </View>
+                                <View className="h-9 w-9 items-center justify-center rounded-full bg-[#F0EDFC]">
+                                    <Ionicons name="mail" size={16} color={PRIMARY_COLOR} />
+                                </View>
                             </View>
-                            <View className="h-9 w-9 items-center justify-center rounded-full bg-[#F0EDFC]">
-                                <Ionicons name="mail" size={16} color={PRIMARY_COLOR} />
+                        ) : (
+                            <View className="flex-row items-center">
+                                <View className="h-12 w-12 items-center justify-center rounded-full bg-[#F1F2F6]">
+                                    <Ionicons name="person-outline" size={22} color="#B8BBC6" />
+                                </View>
+                                <View className="ml-3 flex-1">
+                                    <Text className="font-medium text-[15px] text-[#8F94A4]">
+                                        {loadingData ? 'Loading…' : 'No lecturer assigned'}
+                                    </Text>
+                                </View>
                             </View>
-                        </View>
+                        )}
                     </View>
                 </View>
 
@@ -606,7 +636,9 @@ export function ClassDetailScreen() {
                                 <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
                             </View>
                             <Text className="font-heading text-[22px] text-[#181A20]">
-                                {Math.round(students.reduce((sum, s) => sum + s.attendanceRate, 0) / students.length)}%
+                                {students.length > 0
+                                    ? Math.round(students.reduce((sum, s) => sum + s.attendanceRate, 0) / students.length)
+                                    : 0}%
                             </Text>
                             <Text className="text-[12px] text-[#8F94A4]">Avg. Attendance</Text>
                         </View>
@@ -678,7 +710,7 @@ export function ClassDetailScreen() {
                                     studentName: item.name,
                                     matricNo: item.matricNo,
                                     email: item.email,
-                                    avatar: item.avatar,
+                                    avatar: item.avatar ?? '',
                                     classCode,
                                     className,
                                 });
@@ -688,13 +720,30 @@ export function ClassDetailScreen() {
                     contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 140 }}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={
-                        <View className="items-center py-8">
-                            <View className="h-14 w-14 items-center justify-center rounded-full bg-[#FFF3E0] mb-3">
-                                <Ionicons name="search" size={28} color="#FF9800" />
+                        loadingData ? (
+                            <View className="items-center py-10">
+                                <ActivityIndicator size="small" color={PRIMARY_COLOR} />
+                                <Text className="text-[13px] text-[#8F94A4] mt-3">Loading students…</Text>
                             </View>
-                            <Text className="font-medium text-[15px] text-[#181A20]">No students found</Text>
-                            <Text className="text-[13px] text-[#8F94A4] mt-1">Try a different search term</Text>
-                        </View>
+                        ) : searchQuery.trim() ? (
+                            <View className="items-center py-8">
+                                <View className="h-14 w-14 items-center justify-center rounded-full bg-[#FFF3E0] mb-3">
+                                    <Ionicons name="search" size={28} color="#FF9800" />
+                                </View>
+                                <Text className="font-medium text-[15px] text-[#181A20]">No students found</Text>
+                                <Text className="text-[13px] text-[#8F94A4] mt-1">Try a different search term</Text>
+                            </View>
+                        ) : (
+                            <View className="items-center py-8">
+                                <View className="h-14 w-14 items-center justify-center rounded-full bg-[#F0EDFC] mb-3">
+                                    <Ionicons name="people-outline" size={28} color={PRIMARY_COLOR} />
+                                </View>
+                                <Text className="font-medium text-[15px] text-[#181A20]">No students enrolled yet</Text>
+                                <Text className="text-[13px] text-[#8F94A4] mt-1 text-center">
+                                    Enrolled students will appear here
+                                </Text>
+                            </View>
+                        )
                     }
                 />
             </Animated.View>
@@ -848,7 +897,7 @@ export function ClassDetailScreen() {
 
                     {/* Set Location FAB - Lighter Shade */}
                     <Pressable
-                        onPress={() => setLocationRef.current?.open()}
+                        onPress={() => venuePickerRef.current?.open()}
                         style={{ position: 'absolute', bottom: 170, right: 20 }}
                     >
                         <Animated.View
@@ -906,12 +955,20 @@ export function ClassDetailScreen() {
             />
 
             {isHOC && (
-                <SetBoundaryBottomSheet
-                    ref={setLocationRef}
-                    classCode={classCode}
-                    onSaveLocation={handleSaveLocation}
-                    existingLocation={classLocation}
-                />
+                <>
+                    <VenuePickerBottomSheet
+                        ref={venuePickerRef}
+                        institutionId={user?.institutionId}
+                        onSelectVenue={handleSelectExistingVenue}
+                        onDrawBoundary={handleOpenBoundaryDraw}
+                    />
+                    <SetBoundaryBottomSheet
+                        ref={setLocationRef}
+                        classCode={classCode}
+                        onSaveLocation={handleSaveLocation}
+                        existingLocation={classLocation}
+                    />
+                </>
             )}
 
             {classLocation && (

@@ -6,6 +6,7 @@ use App\Models\AttendanceSession;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
 use App\Models\CourseGeofence;
+use App\Models\Institution;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -20,7 +21,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Superadmin
+        // Superadmin (no institution — manages all institutions)
         $admin = User::query()->updateOrCreate(
             ['email' => 'admin@geotrack.edu'],
             [
@@ -31,18 +32,29 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        // Seed institution — all non-superadmin users and courses belong here
+        $institution = Institution::query()->updateOrCreate(
+            ['code' => 'FUNAAB'],
+            [
+                'name'       => 'Federal University of Agriculture, Abeokuta',
+                'address'    => 'Alabata Road, Abeokuta, Ogun State, Nigeria',
+                'created_by' => $admin->id,
+            ]
+        );
+
         // Lecturers
         $lecturers = collect([
             ['name' => 'Dr. Adebayo Olu', 'email' => 'adebayo.olu@geotrack.edu'],
             ['name' => 'Dr. Funmi Ade', 'email' => 'funmi.ade@geotrack.edu'],
-        ])->map(function (array $data) {
+        ])->map(function (array $data) use ($institution) {
             return User::query()->updateOrCreate(
                 ['email' => $data['email']],
                 [
-                    'name' => $data['name'],
-                    'password' => 'Password123!',
-                    'role' => 'lecturer',
-                    'email_verified_at' => now(),
+                    'name'               => $data['name'],
+                    'password'           => 'Password123!',
+                    'role'               => 'lecturer',
+                    'email_verified_at'  => now(),
+                    'institution_id'     => $institution->id,
                 ]
             );
         });
@@ -51,11 +63,12 @@ class DatabaseSeeder extends Seeder
         $hoc = User::query()->updateOrCreate(
             ['matric_no' => 'FUNAAB/CSC/2022/HOC'],
             [
-                'name' => 'Kemi Adesanya',
-                'email' => 'kemi.adesanya@students.geotrack.edu',
-                'password' => 'Password123!',
-                'role' => 'hoc',
+                'name'              => 'Kemi Adesanya',
+                'email'             => 'kemi.adesanya@students.geotrack.edu',
+                'password'          => 'Password123!',
+                'role'              => 'hoc',
                 'email_verified_at' => now(),
+                'institution_id'    => $institution->id,
             ]
         );
 
@@ -68,16 +81,17 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Ifeanyi Nwosu', 'matric_no' => 'FUNAAB/CSC/2022/005'],
             ['name' => 'Bola Adeyemi', 'matric_no' => 'FUNAAB/CSC/2022/006'],
         ];
-        $students = collect($studentSeeds)->map(function (array $data) {
+        $students = collect($studentSeeds)->map(function (array $data) use ($institution) {
             $slug = strtolower(str_replace(' ', '.', $data['name']));
             return User::query()->updateOrCreate(
                 ['matric_no' => $data['matric_no']],
                 [
-                    'name' => $data['name'],
-                    'email' => $slug . '@students.geotrack.edu',
-                    'password' => 'Password123!',
-                    'role' => 'student',
+                    'name'              => $data['name'],
+                    'email'             => $slug . '@students.geotrack.edu',
+                    'password'          => 'Password123!',
+                    'role'              => 'student',
                     'email_verified_at' => now(),
+                    'institution_id'    => $institution->id,
                 ]
             );
         });
@@ -90,15 +104,16 @@ class DatabaseSeeder extends Seeder
             ['code' => 'CSC407', 'title' => 'Artificial Intelligence', 'department' => 'Computer Science', 'level' => '400', 'lecturer' => 1],
         ];
 
-        $courses = collect($courseSeeds)->map(function (array $data) use ($lecturers, $admin) {
+        $courses = collect($courseSeeds)->map(function (array $data) use ($lecturers, $admin, $institution) {
             $course = Course::query()->updateOrCreate(
                 ['code' => $data['code']],
                 [
-                    'title' => $data['title'],
-                    'department' => $data['department'],
-                    'level' => $data['level'],
-                    'lecturer_id' => $lecturers[$data['lecturer']]->id,
-                    'created_by' => $admin->id,
+                    'title'          => $data['title'],
+                    'department'     => $data['department'],
+                    'level'          => $data['level'],
+                    'lecturer_id'    => $lecturers[$data['lecturer']]->id,
+                    'created_by'     => $admin->id,
+                    'institution_id' => $institution->id,
                 ]
             );
 

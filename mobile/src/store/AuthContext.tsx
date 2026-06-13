@@ -9,6 +9,7 @@ import React, {
 import axios from 'axios';
 import { useRole, type UserRole } from './RoleContext';
 import { authApi, navigationRef, type ApiUser } from '../services/apiClient';
+import type { ApiInstitution } from '../types/api';
 import {
     clearAuthStorage,
     getAccessToken,
@@ -37,6 +38,7 @@ interface PendingRegistration {
     password: string;
     role: RegisterRole;
     matricNo?: string;
+    institutionId?: number;
     invite?: InviteMeta;
 }
 
@@ -46,6 +48,8 @@ interface AuthUser {
     email: string;
     role: RegisterRole;
     matricNo?: string;
+    institutionId?: number | null;
+    institution?: Pick<ApiInstitution, 'id' | 'name' | 'code' | 'address'> | null;
     invite?: InviteMeta;
 }
 
@@ -84,6 +88,8 @@ const apiUserToAuthUser = (u: ApiUser, invite?: InviteMeta): AuthUser => ({
     email: u.email,
     role: u.role as RegisterRole,
     matricNo: u.matric_no ?? undefined,
+    institutionId: u.institution_id ?? null,
+    institution: u.institution ?? null,
     invite,
 });
 
@@ -255,6 +261,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 password_confirmation: data.password,
                 role: data.role,
                 matric_no: data.role === 'student' ? data.matricNo?.trim() : undefined,
+                institution_id: data.institutionId,
             });
 
             setPendingRegistration({ ...data, email });

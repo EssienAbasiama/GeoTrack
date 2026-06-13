@@ -58,7 +58,9 @@ export function HomeScreen() {
         return () => { mounted = false; };
     }, [isSuperAdmin, isLecturer, isHOC]);
 
-    // --- Upcoming class (real dashboard data, mock-data fallback) ---
+    // --- Upcoming class (real dashboard data only — no mock fallback) ---
+    // Students: backend returns only enrolled courses with an *active* session.
+    // Lecturers/HOC: their first assigned course (with its active session, if any).
     const upcomingCourse =
         studentDash?.upcoming_classes?.[0] ||
         lecturerDash?.courses?.[0] ||
@@ -86,19 +88,12 @@ export function HomeScreen() {
                 : new Date(now.getTime() + 90 * 60 * 1000),
             location: fenceCenter,
         }
-        : {
-            id: '',
-            code: 'ELE 512',
-            name: 'Digital Signal Processing',
-            venue: 'LT 201',
-            day: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
-            startTime: new Date(now.getTime() - 30 * 60 * 1000),
-            endTime: new Date(now.getTime() + 90 * 60 * 1000),
-            location: { latitude: 7.2266, longitude: 3.4400 },
-        };
+        : null;
 
     // Calculate countdown and determine if class is currently active
     const getCountdown = () => {
+        if (!upcomingClass) return { minutes: 0, seconds: 0, isLive: false, canCheckIn: false };
+
         const diff = upcomingClass.startTime.getTime() - now.getTime();
         const endDiff = upcomingClass.endTime.getTime() - now.getTime();
 
@@ -117,7 +112,7 @@ export function HomeScreen() {
         return { minutes, seconds, isLive, canCheckIn };
     };
     const countdown = getCountdown();
-    const attendanceEnabled = isAttendanceEnabled(upcomingClass.code);
+    const attendanceEnabled = upcomingClass ? isAttendanceEnabled(upcomingClass.code) : false;
     const canStudentCheckIn = countdown.canCheckIn && attendanceEnabled;
 
     // --- Screen fade animation ---
@@ -192,14 +187,11 @@ export function HomeScreen() {
     const buttonScale = useRef(new Animated.Value(1)).current;
 
     const handleStudentCheckIn = () => {
+        if (!upcomingClass) return;
         Animated.sequence([
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
         ]).start(() => {
-            // upcomingClass.id isn't tracked in this mock-data slice yet; the
-            // CheckInScreen will surface an empty state if the course id is
-            // missing. Real ids come from dashboardApi once the home screen
-            // is fully wired to the backend.
             navigation.navigate("CheckIn", {
                 courseId: String(upcomingClass.id ?? ''),
                 classCode: upcomingClass.code,
@@ -209,6 +201,7 @@ export function HomeScreen() {
     };
 
     const handleGetDirections = () => {
+        if (!upcomingClass) return;
         Animated.sequence([
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
@@ -224,6 +217,7 @@ export function HomeScreen() {
     };
 
     const handleStudentAction = () => {
+        if (!upcomingClass) return;
         if (canStudentCheckIn) {
             handleStudentCheckIn();
         } else {
@@ -232,6 +226,7 @@ export function HomeScreen() {
     };
 
     const handleLecturerAction = () => {
+        if (!upcomingClass) return;
         Animated.sequence([
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
@@ -281,17 +276,21 @@ export function HomeScreen() {
         return badges[role] || badges.student;
     };
     const roleBadge = getRoleBadge();
+    // No actionable class for a student/lecturer when nothing is in session.
+    const noActiveClass = !isSuperAdmin && !upcomingClass;
     const isLecturerLive = isLecturer && countdown.isLive;
     const shouldShowDirections = !isSuperAdmin && !isLecturerLive && ((isLecturer && !countdown.isLive) || !canStudentCheckIn);
-    const mainButtonColor = isSuperAdmin
-        ? '#4CAF50'
-        : isLecturerLive
-            ? attendanceEnabled
-                ? '#EF4444'
-                : '#4CAF50'
-            : shouldShowDirections
-                ? '#6343cc'
-                : '#4CAF50';
+    const mainButtonColor = noActiveClass
+        ? '#C1C4CE'
+        : isSuperAdmin
+            ? '#4CAF50'
+            : isLecturerLive
+                ? attendanceEnabled
+                    ? '#EF4444'
+                    : '#4CAF50'
+                : shouldShowDirections
+                    ? '#6343cc'
+                    : '#4CAF50';
 
     const mainShadowColor = mainButtonColor;
 
@@ -401,32 +400,48 @@ export function HomeScreen() {
 
                     {/* Student: Upcoming Class with Countdown */}
                     {(isStudent || isLecturer || isHOC) && (
-                        <View className="mt-4 rounded-[16px] bg-white px-4 py-4 shadow-sm shadow-black/5">
-                            <View className="flex-row items-center">
-                                <View className="h-10 w-10 items-center justify-center rounded-[12px] bg-[#F0EDFC]">
-                                    <Ionicons name="book" size={18} color="#6343cc" />
-                                </View>
-                                <View className="ml-3 flex-1">
-                                    <Text className="font-heading text-[16px] text-[#181A20]">{upcomingClass.code}</Text>
-                                    <Text className="text-[12px] text-[#8F94A4]">{upcomingClass.venue}</Text>
-                                </View>
-                                <View className="items-end">
-                                    {countdown.isLive ? (
-                                        <View className="flex-row items-center">
-                                            <View className="h-2 w-2 rounded-full bg-[#4CAF50] mr-1.5" />
-                                            <Text className="font-heading text-[16px] text-[#4CAF50]">LIVE</Text>
-                                        </View>
-                                    ) : (
-                                        <>
-                                            <Text className="text-[10px] text-[#8F94A4]">Starts in</Text>
-                                            <Text className="font-heading text-[18px] text-[#6343cc]">
-                                                {countdown.minutes}:{countdown.seconds.toString().padStart(2, '0')}
-                                            </Text>
-                                        </>
-                                    )}
+                        upcomingClass ? (
+                            <View className="mt-4 rounded-[16px] bg-white px-4 py-4 shadow-sm shadow-black/5">
+                                <View className="flex-row items-center">
+                                    <View className="h-10 w-10 items-center justify-center rounded-[12px] bg-[#F0EDFC]">
+                                        <Ionicons name="book" size={18} color="#6343cc" />
+                                    </View>
+                                    <View className="ml-3 flex-1">
+                                        <Text className="font-heading text-[16px] text-[#181A20]">{upcomingClass.code}</Text>
+                                        <Text className="text-[12px] text-[#8F94A4]">
+                                            {upcomingClass.venue || upcomingClass.name}
+                                        </Text>
+                                    </View>
+                                    <View className="items-end">
+                                        {countdown.isLive ? (
+                                            <View className="flex-row items-center">
+                                                <View className="h-2 w-2 rounded-full bg-[#4CAF50] mr-1.5" />
+                                                <Text className="font-heading text-[16px] text-[#4CAF50]">LIVE</Text>
+                                            </View>
+                                        ) : (
+                                            <>
+                                                <Text className="text-[10px] text-[#8F94A4]">Starts in</Text>
+                                                <Text className="font-heading text-[18px] text-[#6343cc]">
+                                                    {countdown.minutes}:{countdown.seconds.toString().padStart(2, '0')}
+                                                </Text>
+                                            </>
+                                        )}
+                                    </View>
                                 </View>
                             </View>
-                        </View>
+                        ) : (
+                            <View className="mt-4 rounded-[16px] bg-white px-4 py-5 shadow-sm shadow-black/5 items-center">
+                                <View className="h-11 w-11 items-center justify-center rounded-full bg-[#F1F2F6] mb-2">
+                                    <Ionicons name="calendar-outline" size={22} color="#B8BBC6" />
+                                </View>
+                                <Text className="font-heading text-[15px] text-[#181A20]">No class in session</Text>
+                                <Text className="text-[12px] text-[#8F94A4] mt-1 text-center">
+                                    {isStudent
+                                        ? 'A class will appear here when one of your enrolled classes goes live.'
+                                        : 'Your active class will appear here once a session starts.'}
+                                </Text>
+                            </View>
+                        )
                     )}
 
                     {/* Super Admin: Recent Activity */}
@@ -457,7 +472,7 @@ export function HomeScreen() {
                     {/* Main Action Button with Ripples */}
                     <View className="mt-8 items-center">
                         <View className="relative h-[220px] w-[220px] items-center justify-center">
-                            {rippleAnims.map((anim, idx) => (
+                            {!noActiveClass && rippleAnims.map((anim, idx) => (
                                 <Animated.View
                                     key={idx}
                                     style={rippleStyle(anim, 130 + idx * 30)}
@@ -465,6 +480,7 @@ export function HomeScreen() {
                             ))}
 
                             <Pressable
+                                disabled={noActiveClass}
                                 onPress={
                                     isSuperAdmin
                                         ? handleAdminCreate
@@ -489,7 +505,14 @@ export function HomeScreen() {
                                         elevation: 12,
                                     }}
                                 >
-                                    {isSuperAdmin ? (
+                                    {noActiveClass ? (
+                                        <>
+                                            <MaterialCommunityIcons name="clock-outline" size={32} color="#fff" />
+                                            <Text className="mt-2 font-heading text-[13px] text-white text-center px-2">
+                                                No Active Class
+                                            </Text>
+                                        </>
+                                    ) : isSuperAdmin ? (
                                         <>
                                             <Ionicons name="add" size={42} color="#fff" />
                                             <Text className="mt-1 font-heading text-[14px] text-white">

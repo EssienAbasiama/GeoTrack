@@ -7,6 +7,17 @@
 
 export type ApiRole = 'student' | 'lecturer' | 'hoc' | 'superadmin';
 
+// ─── Institution ──────────────────────────────────────────────────────────────
+export interface ApiInstitution {
+    id: number;
+    name: string;
+    code: string;
+    address?: string | null;
+    logo_url?: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
 // ─── Device ──────────────────────────────────────────────────────────────────
 export interface ApiDevice {
     id: number;
@@ -40,6 +51,8 @@ export interface ApiCourse {
     description?: string | null;
     department?: string;
     level?: string | null;
+    institution_id?: number | null;
+    institution?: Pick<ApiInstitution, 'id' | 'name' | 'code'> | null;
     lecturer_id?: number | null;
     lecturer?: { id: number; name: string; email: string } | null;
     geofence?: ApiGeofence | null;

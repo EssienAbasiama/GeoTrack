@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
+use App\Models\Institution;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,10 +18,17 @@ class CourseController extends Controller
     {
         $user = $request->user();
 
-        $query = Course::query()->with(['lecturer:id,name,email', 'geofence']);
+        $query = Course::query()->with(['lecturer:id,name,email', 'geofence', 'institution:id,name,code']);
+
+        // Scope to the user's institution unless they are a superadmin.
+        // Users without an institution_id (legacy / superadmin) see all courses
+        // that match their role filter below.
+        if (!$user->isSuperAdmin() && $user->institution_id) {
+            $query->where('institution_id', $user->institution_id);
+        }
 
         if ($user->isAdmin()) {
-            // No further filter.
+            // Institution already filtered above; admins see all courses within it.
         } elseif ($user->isLecturer()) {
             $query->where('lecturer_id', $user->id);
         } else {
@@ -48,17 +56,32 @@ class CourseController extends Controller
         }
 
         $validated = $request->validate([
-            'code'        => ['required', 'string', 'max:32', 'unique:courses,code'],
-            'title'       => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'department'  => ['nullable', 'string', 'max:128'],
-            'level'       => ['nullable', 'string', 'max:32'],
-            'lecturer_id' => ['nullable', 'integer', 'exists:users,id'],
-            'venue'       => ['nullable', 'string', 'max:255'],
-            'day'         => ['nullable', 'string', 'max:16'],
-            'start_time'  => ['nullable', 'string', 'max:8'],
-            'end_time'    => ['nullable', 'string', 'max:8'],
+            'code'           => ['required', 'string', 'max:32', 'unique:courses,code'],
+            'title'          => ['required', 'string', 'max:255'],
+            'description'    => ['nullable', 'string'],
+            'department'     => ['nullable', 'string', 'max:128'],
+            'level'          => ['nullable', 'string', 'max:32'],
+            'lecturer_id'    => ['nullable', 'integer', 'exists:users,id'],
+            'venue'          => ['nullable', 'string', 'max:255'],
+            'day'            => ['nullable', 'string', 'max:16'],
+            'start_time'     => ['nullable', 'string', 'max:8'],
+            'end_time'       => ['nullable', 'string', 'max:8'],
+            'institution_id' => ['nullable', 'integer', 'exists:institutions,id'],
         ]);
+
+        // Resolve institution_id:
+        // - Superadmin must supply it explicitly.
+        // - Everyone else inherits it from their own profile.
+        if ($user->isSuperAdmin()) {
+            if (empty($validated['institution_id'])) {
+                return response()->json([
+                    'message' => 'institution_id is required when creating a course as super admin.',
+                ], 422);
+            }
+            $institutionId = $validated['institution_id'];
+        } else {
+            $institutionId = $user->institution_id;
+        }
 
         // Lecturers are always assigned to their own course; only admins can assign another lecturer.
         if ($user->isLecturer()) {
@@ -73,19 +96,20 @@ class CourseController extends Controller
         }
 
         try {
-            $course = DB::transaction(function () use ($validated, $user) {
+            $course = DB::transaction(function () use ($validated, $user, $institutionId) {
                 $course = Course::query()->create([
-                    'code'        => $validated['code'],
-                    'title'       => $validated['title'],
-                    'description' => $validated['description'] ?? null,
-                    'department'  => $validated['department'] ?? null,
-                    'level'       => $validated['level'] ?? null,
-                    'lecturer_id' => $validated['lecturer_id'] ?? null,
-                    'venue'       => $validated['venue'] ?? null,
-                    'day'         => $validated['day'] ?? null,
-                    'start_time'  => $validated['start_time'] ?? null,
-                    'end_time'    => $validated['end_time'] ?? null,
-                    'created_by'  => $user->id,
+                    'institution_id' => $institutionId,
+                    'code'           => $validated['code'],
+                    'title'          => $validated['title'],
+                    'description'    => $validated['description'] ?? null,
+                    'department'     => $validated['department'] ?? null,
+                    'level'          => $validated['level'] ?? null,
+                    'lecturer_id'    => $validated['lecturer_id'] ?? null,
+                    'venue'          => $validated['venue'] ?? null,
+                    'day'            => $validated['day'] ?? null,
+                    'start_time'     => $validated['start_time'] ?? null,
+                    'end_time'       => $validated['end_time'] ?? null,
+                    'created_by'     => $user->id,
                 ]);
 
                 // HOC is a student in their own class — auto-enroll them.

@@ -21,11 +21,12 @@ class AuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', 'in:student,lecturer,hoc,superadmin'],
-            'matric_no' => ['nullable', 'string', 'max:64', 'unique:users,matric_no'],
+            'name'           => ['required', 'string', 'max:255'],
+            'email'          => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'password'       => ['required', 'string', 'min:8', 'confirmed'],
+            'role'           => ['required', 'in:student,lecturer,hoc,superadmin'],
+            'matric_no'      => ['nullable', 'string', 'max:64', 'unique:users,matric_no'],
+            'institution_id' => ['nullable', 'integer', 'exists:institutions,id'],
         ]);
 
         if ($validated['role'] === 'student' && empty($validated['matric_no'])) {
@@ -34,14 +35,22 @@ class AuthController extends Controller
             ], 422);
         }
 
+        // Every non-superadmin must belong to an institution.
+        if ($validated['role'] !== 'superadmin' && empty($validated['institution_id'])) {
+            return response()->json([
+                'message' => 'Please select an institution to continue.',
+            ], 422);
+        }
+
         try {
             $user = DB::transaction(function () use ($validated) {
                 return User::query()->create([
-                    'name' => $validated['name'],
-                    'email' => Str::lower($validated['email']),
-                    'password' => $validated['password'],
-                    'role' => $validated['role'],
-                    'matric_no' => $validated['role'] === 'student' ? $validated['matric_no'] : null,
+                    'name'           => $validated['name'],
+                    'email'          => Str::lower($validated['email']),
+                    'password'       => $validated['password'],
+                    'role'           => $validated['role'],
+                    'matric_no'      => $validated['role'] === 'student' ? $validated['matric_no'] : null,
+                    'institution_id' => $validated['institution_id'] ?? null,
                 ]);
             });
 
@@ -383,14 +392,25 @@ class AuthController extends Controller
      */
     private function userPayload(User $user): array
     {
+        $user->loadMissing('institution');
+
         return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->role,
-            'matric_no' => $user->matric_no,
-            'email_verified_at' => optional($user->email_verified_at)?->toISOString(),
-            'created_at' => optional($user->created_at)?->toISOString(),
+            'id'                 => $user->id,
+            'name'               => $user->name,
+            'email'              => $user->email,
+            'role'               => $user->role,
+            'matric_no'          => $user->matric_no,
+            'institution_id'     => $user->institution_id,
+            'institution'        => $user->institution
+                ? [
+                    'id'      => $user->institution->id,
+                    'name'    => $user->institution->name,
+                    'code'    => $user->institution->code,
+                    'address' => $user->institution->address,
+                ]
+                : null,
+            'email_verified_at'  => optional($user->email_verified_at)?->toISOString(),
+            'created_at'         => optional($user->created_at)?->toISOString(),
         ];
     }
 }

@@ -14,6 +14,7 @@ class Course extends Model
     use HasFactory;
 
     protected $fillable = [
+        'institution_id',
         'code',
         'title',
         'description',
@@ -26,6 +27,12 @@ class Course extends Model
         'lecturer_id',
         'created_by',
     ];
+
+    /** @return BelongsTo<Institution, $this> */
+    public function institution(): BelongsTo
+    {
+        return $this->belongsTo(Institution::class);
+    }
 
     public function lecturer(): BelongsTo
     {

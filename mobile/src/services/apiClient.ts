@@ -7,6 +7,7 @@ import { getAccessToken, getRefreshToken, setAccessToken, setRefreshToken, clear
 import type { RootStackParamList } from '../types/navigation';
 import type {
     ApiDevice,
+    ApiInstitution,
     DeviceFingerprint,
     ApiCourse,
     ApiCourseStudent,
@@ -338,8 +339,10 @@ export interface ApiUser {
     id: number;
     name: string;
     email: string;
-    role: 'student' | 'lecturer';
+    role: 'student' | 'lecturer' | 'hoc' | 'superadmin';
     matric_no?: string | null;
+    institution_id?: number | null;
+    institution?: Pick<ApiInstitution, 'id' | 'name' | 'code' | 'address'> | null;
     email_verified_at?: string | null;
     created_at: string;
 }
@@ -365,8 +368,9 @@ export const authApi = {
         email: string;
         password: string;
         password_confirmation: string;
-        role: 'student' | 'lecturer';
+        role: 'student' | 'lecturer' | 'hoc' | 'superadmin';
         matric_no?: string;
+        institution_id?: number;
     }) => apiClient.post<{ message: string; email: string }>('/auth/register', body),
 
     verifyEmailCode: (body: { email: string; code: string }) =>
@@ -424,6 +428,25 @@ export const deviceApi = {
         ),
 };
 
+// ─── Institution API ─────────────────────────────────────────────────────────
+// GET /institutions is public — called during registration before a token exists.
+export const institutionApi = {
+    list: () =>
+        unwrap<{ institutions: ApiInstitution[] }>(apiClient.get('/institutions')),
+
+    create: (body: { name: string; code: string; address?: string }) =>
+        unwrap<{ institution: ApiInstitution }>(apiClient.post('/institutions', body)),
+
+    get: (id: number | string) =>
+        unwrap<{ institution: ApiInstitution }>(apiClient.get(`/institutions/${id}`)),
+
+    update: (id: number | string, body: Partial<{ name: string; code: string; address: string }>) =>
+        unwrap<{ institution: ApiInstitution }>(apiClient.patch(`/institutions/${id}`, body)),
+
+    delete: (id: number | string) =>
+        apiClient.delete<{ message: string }>(`/institutions/${id}`),
+};
+
 // ─── Course API ──────────────────────────────────────────────────────────────
 export const courseApi = {
     list: () => unwrap<{ courses: ApiCourse[] }>(apiClient.get('/courses')),
@@ -435,6 +458,7 @@ export const courseApi = {
         department?: string;
         level?: string;
         lecturer_id?: number;
+        institution_id?: number;
         venue?: string;
         day?: string;
         start_time?: string;
