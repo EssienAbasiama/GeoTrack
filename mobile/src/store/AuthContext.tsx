@@ -50,6 +50,8 @@ interface AuthUser {
     matricNo?: string;
     institutionId?: number | null;
     institution?: Pick<ApiInstitution, 'id' | 'name' | 'code' | 'address'> | null;
+    pushNotificationsEnabled?: boolean;
+    emailNotificationsEnabled?: boolean;
     invite?: InviteMeta;
 }
 
@@ -76,6 +78,13 @@ interface AuthContextType {
     resetPassword: (code: string, nextPassword: string, email?: string) => Promise<{ ok: boolean; message?: string }>;
     /** Force re-bind; used by the DeviceConflict reset flow. */
     rebindDevice: () => Promise<BindDeviceResult>;
+    /** Update editable profile fields / notification prefs. */
+    updateProfile: (data: {
+        name?: string;
+        pushNotificationsEnabled?: boolean;
+        emailNotificationsEnabled?: boolean;
+    }) => Promise<{ ok: boolean; message?: string }>;
+    changePassword: (currentPassword: string, newPassword: string) => Promise<{ ok: boolean; message?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -93,6 +102,8 @@ const apiUserToAuthUser = (u: ApiUser, invite?: InviteMeta): AuthUser => ({
     matricNo: u.matric_no ?? undefined,
     institutionId: u.institution_id ?? null,
     institution: u.institution ?? null,
+    pushNotificationsEnabled: u.push_notifications_enabled ?? true,
+    emailNotificationsEnabled: u.email_notifications_enabled ?? true,
     invite,
 });
 
@@ -357,6 +368,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
     };
 
+    // ── Update profile / notification prefs ───────────────────────────────────
+    const updateProfile = async (data: {
+        name?: string;
+        pushNotificationsEnabled?: boolean;
+        emailNotificationsEnabled?: boolean;
+    }) => {
+        try {
+            const { data: res } = await authApi.updateProfile({
+                name: data.name,
+                push_notifications_enabled: data.pushNotificationsEnabled,
+                email_notifications_enabled: data.emailNotificationsEnabled,
+            });
+            const nextUser = apiUserToAuthUser(res.user, user?.invite);
+            setUser(nextUser);
+            await setUserData(res.user);
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err) };
+        }
+    };
+
+    // ── Change password ────────────────────────────────────────────────────────
+    const changePassword = async (currentPassword: string, newPassword: string) => {
+        try {
+            await authApi.changePassword({
+                current_password: currentPassword,
+                password: newPassword,
+                password_confirmation: newPassword,
+            });
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, message: extractError(err, 'Could not change password.') };
+        }
+    };
+
     const value = useMemo<AuthContextType>(
         () => ({
             isAuthenticated: Boolean(user),
@@ -376,6 +422,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             requestPasswordReset,
             resetPassword,
             rebindDevice,
+            updateProfile,
+            changePassword,
         }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [user, authLoading, isInitialising, pendingRegistration, pendingEmail, bindStatus, pendingInviteToken],

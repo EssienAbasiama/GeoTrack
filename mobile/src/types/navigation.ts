@@ -82,6 +82,8 @@ export type RootStackParamList = {
   JoinClass: {
     token: string;
   };
+  PasswordManager: undefined;
+  HelpCenter: undefined;
 };
 
 /**

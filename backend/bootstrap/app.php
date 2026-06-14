@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\CloseExpiredSessions;
+use App\Console\Commands\NotifyUpcomingClasses;
 use App\Http\Middleware\EnsureBoundDevice;
 use App\Services\PresenceCheckService;
 use Illuminate\Console\Scheduling\Schedule;
@@ -32,6 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command(CloseExpiredSessions::class)
             ->everyMinute()
             ->name('sessions:close-expired')
+            ->withoutOverlapping();
+
+        $schedule->command(NotifyUpcomingClasses::class)
+            ->everyMinute()
+            ->name('classes:notify-upcoming')
             ->withoutOverlapping();
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -29,6 +29,8 @@ class User extends Authenticatable
         'matric_no',
         'institution_id',
         'password',
+        'push_notifications_enabled',
+        'email_notifications_enabled',
     ];
 
     /**
@@ -141,6 +143,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'push_notifications_enabled' => 'boolean',
+            'email_notifications_enabled' => 'boolean',
         ];
     }
 }

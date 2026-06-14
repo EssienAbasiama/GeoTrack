@@ -19,6 +19,8 @@ import { FaceEnrollmentScreen } from '../screens/FaceEnrollmentScreen';
 import { PresenceCheckScreen } from '../screens/PresenceCheckScreen';
 import { LecturerSessionScreen } from '../screens/LecturerSessionScreen';
 import { JoinClassScreen } from '../screens/JoinClassScreen';
+import { PasswordManagerScreen } from '../screens/PasswordManagerScreen';
+import { HelpCenterScreen } from '../screens/HelpCenterScreen';
 import { useAuth } from '../store/AuthContext';
 import { navigationRef } from '../services/apiClient';
 import { useEffect } from 'react';
@@ -229,6 +231,16 @@ export function RootNavigator() {
                 options={{
                     animation: 'default',
                 }}
+            />
+            <Stack.Screen
+                name="PasswordManager"
+                component={PasswordManagerScreen}
+                options={{ animation: 'default' }}
+            />
+            <Stack.Screen
+                name="HelpCenter"
+                component={HelpCenterScreen}
+                options={{ animation: 'default' }}
             />
         </Stack.Navigator>
     );

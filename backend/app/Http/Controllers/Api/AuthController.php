@@ -225,6 +225,66 @@ class AuthController extends Controller
         ]);
     }
 
+    /** Update editable profile fields and notification preferences. */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'push_notifications_enabled' => ['sometimes', 'boolean'],
+            'email_notifications_enabled' => ['sometimes', 'boolean'],
+        ]);
+
+        if (array_key_exists('name', $validated)) {
+            $user->name = trim($validated['name']);
+        }
+        if (array_key_exists('push_notifications_enabled', $validated)) {
+            $user->push_notifications_enabled = $validated['push_notifications_enabled'];
+        }
+        if (array_key_exists('email_notifications_enabled', $validated)) {
+            $user->email_notifications_enabled = $validated['email_notifications_enabled'];
+        }
+        $user->save();
+
+        return response()->json([
+            'message' => 'Profile updated.',
+            'user' => $this->userPayload($user),
+        ]);
+    }
+
+    /** Change the password for the authenticated user. */
+    public function changePassword(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        if (!Hash::check($validated['current_password'], $user->password)) {
+            return response()->json([
+                'message' => 'Your current password is incorrect.',
+            ], 422);
+        }
+
+        $user->password = $validated['password'];
+        $user->save();
+
+        // Revoke other refresh tokens so other sessions must re-authenticate.
+        RefreshToken::query()
+            ->where('user_id', $user->id)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => now()]);
+
+        return response()->json([
+            'message' => 'Password changed successfully.',
+        ]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -411,6 +471,8 @@ class AuthController extends Controller
                 : null,
             'email_verified_at'  => optional($user->email_verified_at)?->toISOString(),
             'created_at'         => optional($user->created_at)?->toISOString(),
+            'push_notifications_enabled'  => (bool) $user->push_notifications_enabled,
+            'email_notifications_enabled' => (bool) $user->email_notifications_enabled,
         ];
     }
 }

@@ -6,13 +6,23 @@ import { Animated, Easing, Image, Pressable, ScrollView, Switch, Text, View } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { LogoutBottomSheet } from '../components/LogoutBottomSheet';
+import { EditProfileBottomSheet, type EditProfileBottomSheetRef } from '../components/EditProfileBottomSheet';
 import { useRole, ROLE_LABELS, ROLE_DESCRIPTIONS, UserRole } from '../store/RoleContext';
 import { useAuth } from '../store/AuthContext';
 import { deviceApi, faceApi } from '../services/apiClient';
+import { requestNotificationPermissions, registerPushTokenWithBackend } from '../services/notifications';
 import type { ApiDevice, ApiFaceProfile } from '../types/api';
 import type { RootStackParamList } from '../types/navigation';
 
 const PRIMARY_COLOR = '#6343cc';
+
+function getInitials(name?: string): string {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 const ROLE_OPTIONS: { value: UserRole; icon: React.ComponentProps<typeof Ionicons>['name']; color: string; bg: string }[] = [
     { value: 'student', icon: 'school', color: '#6343cc', bg: '#F0EDFC' },
@@ -45,13 +55,51 @@ function MenuItem({
 }
 
 export function ProfileScreen() {
-    const [pushEnabled, setPushEnabled] = useState(true);
-    const [emailEnabled, setEmailEnabled] = useState(true);
     const [logoutVisible, setLogoutVisible] = useState(false);
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const pulseScale = useRef(new Animated.Value(1)).current;
+    const editProfileRef = useRef<EditProfileBottomSheetRef>(null);
     const { role, setRole, isStudent } = useRole();
-    const { user, signOut, rebindDevice } = useAuth();
+    const { user, signOut, rebindDevice, updateProfile } = useAuth();
+
+    const [pushEnabled, setPushEnabled] = useState(user?.pushNotificationsEnabled ?? true);
+    const [emailEnabled, setEmailEnabled] = useState(user?.emailNotificationsEnabled ?? true);
+    const [savingPrefs, setSavingPrefs] = useState(false);
+
+    // Keep toggles in sync with the latest user prefs.
+    useEffect(() => {
+        setPushEnabled(user?.pushNotificationsEnabled ?? true);
+        setEmailEnabled(user?.emailNotificationsEnabled ?? true);
+    }, [user?.pushNotificationsEnabled, user?.emailNotificationsEnabled]);
+
+    const handleTogglePush = async (value: boolean) => {
+        setPushEnabled(value); // optimistic
+        if (savingPrefs) return;
+        setSavingPrefs(true);
+        if (value) {
+            // Turning on — make sure permission + token are in place.
+            const granted = await requestNotificationPermissions();
+            if (granted) await registerPushTokenWithBackend().catch(() => {});
+        }
+        const res = await updateProfile({ pushNotificationsEnabled: value });
+        setSavingPrefs(false);
+        if (!res.ok) {
+            setPushEnabled(!value); // revert
+            Toast.show({ type: 'error', text1: res.message ?? 'Could not update setting.', position: 'bottom' });
+        }
+    };
+
+    const handleToggleEmail = async (value: boolean) => {
+        setEmailEnabled(value);
+        if (savingPrefs) return;
+        setSavingPrefs(true);
+        const res = await updateProfile({ emailNotificationsEnabled: value });
+        setSavingPrefs(false);
+        if (!res.ok) {
+            setEmailEnabled(!value);
+            Toast.show({ type: 'error', text1: res.message ?? 'Could not update setting.', position: 'bottom' });
+        }
+    };
 
     const [device, setDevice] = useState<ApiDevice | null>(null);
     const [faceProfile, setFaceProfile] = useState<ApiFaceProfile | null>(null);
@@ -144,16 +192,22 @@ export function ProfileScreen() {
                 </View>
 
                 <View className="mb-6 flex-row items-center rounded-[16px] p-4 bg-[#f7f7fa]">
-                    <Image
-                        source={{ uri: 'https://randomuser.me/api/portraits/women/8.jpg' }}
+                    <View
                         style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }}
-                    />
+                        className="items-center justify-center bg-[#EDE9FC]"
+                    >
+                        <Text className="font-heading text-[20px] text-[#6343cc]">{getInitials(user?.name)}</Text>
+                    </View>
                     <View className="flex-1">
                         <Text className="font-heading text-[18px] text-[#181A20]">{user?.name ?? 'Welcome'}</Text>
                         <Text className="mt-1 text-[13px] text-[#8F94A4]">{user?.email ?? ''}</Text>
                     </View>
-                    <Pressable className="ml-2 h-8 px-3 items-center justify-center rounded-lg bg-[#6343cc]/10">
-                        <Ionicons name="pencil" size={16} color={PRIMARY_COLOR} />
+                    <Pressable
+                        onPress={() => editProfileRef.current?.open()}
+                        className="ml-2 h-9 px-3 flex-row items-center justify-center rounded-lg bg-[#6343cc]/10"
+                    >
+                        <Ionicons name="pencil" size={15} color={PRIMARY_COLOR} />
+                        <Text className="ml-1 text-[13px] font-medium text-[#6343cc]">Edit</Text>
                     </Pressable>
                 </View>
 
@@ -209,9 +263,17 @@ export function ProfileScreen() {
                 <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Account</Text>
 
                 <View className="mb-6 rounded-[16px] overflow-hidden">
-                    <MenuItem icon="information-circle-outline" label="Account Information" />
+                    <MenuItem
+                        icon="information-circle-outline"
+                        label="Account Information"
+                        onPress={() => editProfileRef.current?.open()}
+                    />
 
-                    <MenuItem icon="lock-closed-outline" label="Password Manager" />
+                    <MenuItem
+                        icon="lock-closed-outline"
+                        label="Password Manager"
+                        onPress={() => navigation.navigate('PasswordManager')}
+                    />
                 </View>
 
                 {/* Role Selector (Testing) */}
@@ -280,7 +342,7 @@ export function ProfileScreen() {
                     </View>
                     <Switch
                         value={pushEnabled}
-                        onValueChange={setPushEnabled}
+                        onValueChange={handleTogglePush}
                         trackColor={{ false: '#D6D9E3', true: PRIMARY_COLOR }}
                         thumbColor="#FFFFFF"
                     />
@@ -296,7 +358,7 @@ export function ProfileScreen() {
                     </View>
                     <Switch
                         value={emailEnabled}
-                        onValueChange={setEmailEnabled}
+                        onValueChange={handleToggleEmail}
                         trackColor={{ false: '#D6D9E3', true: PRIMARY_COLOR }}
                         thumbColor="#FFFFFF"
                     />
@@ -305,7 +367,11 @@ export function ProfileScreen() {
                 <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Support</Text>
 
                 <View className="mb-3 rounded-[16px] overflow-hidden">
-                    <MenuItem icon="help-circle-outline" label="Help Center" />
+                    <MenuItem
+                        icon="help-circle-outline"
+                        label="Help Center"
+                        onPress={() => navigation.navigate('HelpCenter')}
+                    />
                     <View className="h-[1px] bg-[#E8EAF1]" />
                     <Pressable
                         onPress={() => setLogoutVisible(true)}
@@ -324,6 +390,8 @@ export function ProfileScreen() {
                     onCancel={() => setLogoutVisible(false)}
                     onConfirm={handleLogout}
                 />
+
+                <EditProfileBottomSheet ref={editProfileRef} />
             </ScrollView>
 
             <Animated.View style={{ position: 'absolute', right: 20, bottom: 100, transform: [{ scale: pulseScale }] }}>

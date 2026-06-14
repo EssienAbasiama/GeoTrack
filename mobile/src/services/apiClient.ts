@@ -347,6 +347,8 @@ export interface ApiUser {
     institution?: Pick<ApiInstitution, 'id' | 'name' | 'code' | 'address'> | null;
     email_verified_at?: string | null;
     created_at: string;
+    push_notifications_enabled?: boolean;
+    email_notifications_enabled?: boolean;
 }
 
 export interface ApiTokens {
@@ -388,6 +390,18 @@ export const authApi = {
         apiClient.post<AuthResponse>('/auth/refresh', body),
 
     me: () => apiClient.get<{ user: ApiUser }>('/auth/me'),
+
+    updateProfile: (body: {
+        name?: string;
+        push_notifications_enabled?: boolean;
+        email_notifications_enabled?: boolean;
+    }) => apiClient.patch<{ message: string; user: ApiUser }>('/auth/profile', body),
+
+    changePassword: (body: {
+        current_password: string;
+        password: string;
+        password_confirmation: string;
+    }) => apiClient.post<{ message: string }>('/auth/change-password', body),
 
     logout: (body?: { refresh_token?: string }) =>
         apiClient.post<{ message: string }>('/auth/logout', body ?? {}),
