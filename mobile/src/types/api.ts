@@ -212,6 +212,7 @@ export interface ApiStudentDashboard {
     };
     recent_attendance: ApiAttendanceRecord[];
     upcoming_classes: ApiCourse[];
+    active_sessions?: ApiSession[];
 }
 
 export interface ApiLecturerDashboard {

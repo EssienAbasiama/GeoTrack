@@ -62,6 +62,12 @@ class DashboardController extends Controller
             ->limit(3)
             ->get();
 
+        $activeSessions = AttendanceSession::query()
+            ->whereIn('course_id', $courseIds)
+            ->where('status', 'active')
+            ->where('ends_at', '>', now())
+            ->get();
+
         return response()->json([
             'message' => 'Student dashboard retrieved.',
             'data' => [
@@ -73,6 +79,7 @@ class DashboardController extends Controller
                 ],
                 'recent_attendance' => $recent,
                 'upcoming_classes' => $upcoming,
+                'active_sessions' => $activeSessions,
             ],
         ]);
     }
@@ -98,6 +105,7 @@ class DashboardController extends Controller
 
         $courses = Course::query()
             ->whereIn('id', $courseIds)
+            ->with('geofence')
             ->withCount(['enrollments', 'sessions'])
             ->get();
 

@@ -493,6 +493,9 @@ export function ClassDetailScreen() {
 
     const handleSaveLocation = async (location: ClassBoundary) => {
         setClassLocation(location);
+        // Reflect the new location name in the Venue field immediately.
+        const venueName = location.name?.trim();
+        if (venueName) setCourseVenue(venueName);
         try {
             const polygon = location.polygonCoords;
             await geofenceApi.upsert(classId, {
@@ -503,9 +506,14 @@ export function ClassDetailScreen() {
                 polygon: polygon ?? undefined,
                 label: location.name,
             });
-            Toast.show({ type: 'success', text1: 'Boundary saved.', position: 'bottom' });
+            // Keep the course's venue text in sync so it persists and the
+            // My Classes list reflects the new location too.
+            if (venueName) {
+                await courseApi.update(classId, { venue: venueName }).catch(() => {});
+            }
+            Toast.show({ type: 'success', text1: 'Location saved.', position: 'bottom' });
         } catch (err) {
-            const msg = (err as any)?.response?.data?.message ?? 'Could not save boundary.';
+            const msg = (err as any)?.response?.data?.message ?? 'Could not save location.';
             Toast.show({ type: 'error', text1: msg, position: 'bottom' });
         }
     };

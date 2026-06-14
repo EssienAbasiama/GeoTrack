@@ -1,16 +1,17 @@
 import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Pressable, Text, View, Easing } from "react-native";
+import { Animated, Image, Pressable, RefreshControl, ScrollView, Text, View, Easing } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import Toast from "react-native-toast-message";
 import type { RootStackParamList } from "../types/navigation";
 import { useRole } from "../store/RoleContext";
 import { useAttendanceControl } from "../store/AttendanceControlContext";
 import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from "../components/AdminCreateBottomSheet";
 import { dashboardApi } from "../services/apiClient";
 import { useAuth } from "../store/AuthContext";
-import type { ApiStudentDashboard, ApiLecturerDashboard, ApiAdminDashboard } from "../types/api";
+import type { ApiStudentDashboard, ApiLecturerDashboard, ApiAdminDashboard, ApiSession, ApiCourse } from "../types/api";
 
 const avatarSource = { uri: "https://randomuser.me/api/portraits/men/32.jpg" };
 
@@ -31,46 +32,102 @@ export function HomeScreen() {
     const { user } = useAuth();
     const adminSheetRef = useRef<AdminCreateBottomSheetRef>(null);
 
-    // --- Real dashboard data (with mock-data fallback so the UI never goes blank) ---
+    // --- Real dashboard data ---
     const [studentDash, setStudentDash] = useState<ApiStudentDashboard | null>(null);
     const [lecturerDash, setLecturerDash] = useState<ApiLecturerDashboard | null>(null);
     const [adminDash, setAdminDash] = useState<ApiAdminDashboard | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const loadDashboards = async () => {
+        try {
+            if (isSuperAdmin) {
+                const { data } = await dashboardApi.admin();
+                setAdminDash(data);
+            } else if (isLecturer || isHOC) {
+                const { data } = await dashboardApi.lecturer();
+                setLecturerDash(data);
+            } else {
+                const { data } = await dashboardApi.student();
+                setStudentDash(data);
+            }
+        } catch {
+            // Soft-fail: keep whatever is already shown.
+        }
+    };
 
     useEffect(() => {
-        let mounted = true;
-        const load = async () => {
-            try {
-                if (isSuperAdmin) {
-                    const { data } = await dashboardApi.admin();
-                    if (mounted) setAdminDash(data);
-                } else if (isLecturer || isHOC) {
-                    const { data } = await dashboardApi.lecturer();
-                    if (mounted) setLecturerDash(data);
-                } else {
-                    const { data } = await dashboardApi.student();
-                    if (mounted) setStudentDash(data);
-                }
-            } catch {
-                // Soft-fail: UI keeps the mocked card so animations still play.
-            }
-        };
-        load();
-        return () => { mounted = false; };
+        loadDashboards();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSuperAdmin, isLecturer, isHOC]);
 
-    // --- Upcoming class (real dashboard data only — no mock fallback) ---
-    // Students: backend returns only enrolled courses with an *active* session.
-    // Lecturers/HOC: their first assigned course (with its active session, if any).
-    const upcomingCourse =
-        studentDash?.upcoming_classes?.[0] ||
-        lecturerDash?.courses?.[0] ||
-        null;
-    const upcomingApiSession = lecturerDash?.active_sessions?.[0] ?? null;
-    const fenceCenter = upcomingCourse?.geofence
-        ? {
-              latitude: Number(upcomingCourse.geofence.center_lat ?? 7.2266),
-              longitude: Number(upcomingCourse.geofence.center_lng ?? 3.44),
-          }
+    // Refresh when the screen regains focus (e.g. after a class goes live).
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => { loadDashboards(); });
+        return unsubscribe;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navigation, isSuperAdmin, isLecturer, isHOC]);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadDashboards();
+        setRefreshing(false);
+    };
+
+    // --- Featured class on Home ---
+    // A class is only "live"/"upcoming" based on a real active session or the
+    // course's scheduled day/time window — never on faked fallback times.
+    const featured = useMemo(() => {
+        const activeSessions: ApiSession[] =
+            (studentDash?.active_sessions ?? lecturerDash?.active_sessions ?? []) as ApiSession[];
+        const candidates: ApiCourse[] = isStudent
+            ? (studentDash?.upcoming_classes ?? [])
+            : (lecturerDash?.courses ?? []);
+
+        const todayName = now.toLocaleDateString('en-US', { weekday: 'long' });
+        const parseHM = (t?: string | null) => {
+            if (!t) return null;
+            const m = t.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+            if (!m) return null;
+            let h = parseInt(m[1], 10);
+            const min = parseInt(m[2], 10);
+            const ap = m[3]?.toLowerCase();
+            if (ap === 'pm' && h !== 12) h += 12;
+            if (ap === 'am' && h === 12) h = 0;
+            return { h, min };
+        };
+
+        const statusOf = (course: ApiCourse) => {
+            const session = activeSessions.find((s) => String(s.course_id) === String(course.id)) ?? null;
+            let startDate: Date | null = null;
+            let endDate: Date | null = null;
+            if (session?.starts_at && session?.ends_at) {
+                startDate = new Date(session.starts_at);
+                endDate = new Date(session.ends_at);
+            } else if (course.day === todayName) {
+                const s = parseHM(course.start_time);
+                const e = parseHM(course.end_time);
+                if (s && e) {
+                    startDate = new Date(now); startDate.setHours(s.h, s.min, 0, 0);
+                    endDate = new Date(now); endDate.setHours(e.h, e.min, 0, 0);
+                }
+            }
+            if (!startDate || !endDate) return { course, startDate: null, endDate: null, isLive: false, isUpcoming: false };
+            const t = now.getTime();
+            const isLive = t >= startDate.getTime() && t <= endDate.getTime();
+            const isUpcoming = t < startDate.getTime() && startDate.getTime() - t <= 15 * 60 * 1000;
+            return { course, startDate, endDate, isLive, isUpcoming };
+        };
+
+        const statuses = candidates.map(statusOf);
+        // Prefer a class that is live right now, then one starting within 15 min.
+        return statuses.find((s) => s.isLive) ?? statuses.find((s) => s.isUpcoming) ?? null;
+    }, [studentDash, lecturerDash, isStudent, now]);
+
+    const upcomingCourse = featured?.course ?? null;
+    const fence = upcomingCourse?.geofence ?? null;
+    const hasFence = Boolean(fence && fence.center_lat != null && fence.center_lng != null);
+    const fenceCenter = hasFence
+        ? { latitude: Number(fence!.center_lat), longitude: Number(fence!.center_lng) }
         : { latitude: 7.2266, longitude: 3.44 };
 
     const upcomingClass = upcomingCourse
@@ -79,37 +136,26 @@ export function HomeScreen() {
             code: upcomingCourse.code,
             name: upcomingCourse.title ?? upcomingCourse.name ?? '',
             venue: upcomingCourse.venue ?? '',
-            day: upcomingCourse.day ?? new Date().toLocaleDateString('en-US', { weekday: 'long' }),
-            startTime: upcomingApiSession?.starts_at
-                ? new Date(upcomingApiSession.starts_at)
-                : new Date(now.getTime() - 30 * 60 * 1000),
-            endTime: upcomingApiSession?.ends_at
-                ? new Date(upcomingApiSession.ends_at)
-                : new Date(now.getTime() + 90 * 60 * 1000),
+            day: upcomingCourse.day ?? '',
             location: fenceCenter,
+            // Match ClassDetail: prefer the geofence label, then the venue text.
+            locationName: fence?.name?.trim() || upcomingCourse.venue?.trim() || upcomingCourse.code,
+            hasLocation: hasFence,
+            polygonCoords: fence?.polygon ?? undefined,
         }
         : null;
 
-    // Calculate countdown and determine if class is currently active
+    // Countdown derived from the featured class's real window.
     const getCountdown = () => {
-        if (!upcomingClass) return { minutes: 0, seconds: 0, isLive: false, canCheckIn: false };
-
-        const diff = upcomingClass.startTime.getTime() - now.getTime();
-        const endDiff = upcomingClass.endTime.getTime() - now.getTime();
-
-        // Class is live if: started (diff <= 0) AND not ended (endDiff > 0)
-        const isLive = diff <= 0 && endDiff > 0;
-
-        // Class is upcoming if: starts within 15 mins (can check in early)
-        const isUpcoming = diff > 0 && diff <= 15 * 60 * 1000;
-
-        // Can check in if class is live OR upcoming (within 15 min grace period)
-        const canCheckIn = isLive || isUpcoming;
-
-        if (diff <= 0) return { minutes: 0, seconds: 0, isLive, canCheckIn };
+        if (!featured || !featured.startDate) {
+            return { minutes: 0, seconds: 0, isLive: false, canCheckIn: false };
+        }
+        const diff = featured.startDate.getTime() - now.getTime();
+        const canCheckIn = featured.isLive || featured.isUpcoming;
+        if (diff <= 0) return { minutes: 0, seconds: 0, isLive: featured.isLive, canCheckIn };
         const minutes = Math.floor(diff / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
-        return { minutes, seconds, isLive, canCheckIn };
+        return { minutes, seconds, isLive: featured.isLive, canCheckIn };
     };
     const countdown = getCountdown();
     const attendanceEnabled = upcomingClass ? isAttendanceEnabled(upcomingClass.code) : false;
@@ -202,16 +248,21 @@ export function HomeScreen() {
 
     const handleGetDirections = () => {
         if (!upcomingClass) return;
+        if (!upcomingClass.hasLocation) {
+            Toast.show({ type: 'info', text1: 'No location set for this class yet.', position: 'bottom' });
+            return;
+        }
         Animated.sequence([
             Animated.timing(buttonScale, { toValue: 0.92, duration: 120, useNativeDriver: true }),
             Animated.timing(buttonScale, { toValue: 1, duration: 180, useNativeDriver: true }),
         ]).start(() => {
-            // Navigate to navigation screen with class location
+            // Same payload shape as the My Classes detail screen's directions.
             navigation.navigate("Navigation", {
                 destination: upcomingClass.location,
                 classCode: upcomingClass.code,
                 className: upcomingClass.name,
-                locationName: upcomingClass.venue,
+                locationName: upcomingClass.locationName,
+                polygonCoords: upcomingClass.polygonCoords,
             });
         });
     };
@@ -310,7 +361,14 @@ export function HomeScreen() {
                     ],
                 }}
             >
-                <View className="flex-1 pb-[132px]">
+                <ScrollView
+                    className="flex-1"
+                    contentContainerStyle={{ paddingBottom: 132 }}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6343cc" />
+                    }
+                >
                     {/* Header */}
                     <View className="flex-row items-center justify-between">
                         <View className="flex-row items-center">
@@ -549,7 +607,7 @@ export function HomeScreen() {
                             </Pressable>
                         </View>
                     </View>
-                </View>
+                </ScrollView>
             </Animated.View>
 
             {/* Admin Create Bottom Sheet */}
