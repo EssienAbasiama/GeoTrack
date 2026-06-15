@@ -16,6 +16,7 @@ class AttendanceRecord extends Model
         'device_id',
         'status',
         'checked_in_at',
+        'checked_out_at',
         'check_in_lat',
         'check_in_lng',
         'check_in_accuracy_m',
@@ -30,6 +31,7 @@ class AttendanceRecord extends Model
 
     protected $casts = [
         'checked_in_at' => 'datetime',
+        'checked_out_at' => 'datetime',
         'check_in_lat' => 'float',
         'check_in_lng' => 'float',
         'check_in_accuracy_m' => 'float',

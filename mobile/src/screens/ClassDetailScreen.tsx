@@ -322,7 +322,10 @@ export function ClassDetailScreen() {
     }, [classInfo.day, classInfo.startTime, classInfo.endTime]);
 
     const isAttendanceOpen = isAttendanceEnabled(classCode);
-    const canStudentCheckIn = isClassActive && isAttendanceOpen && !hasCheckedIn;
+    // A student can check in whenever an attendance session is active for the
+    // class (sessions auto-open during the scheduled window). The lecturer-side
+    // `isAttendanceOpen` toggle only drives the lecturer's own controls.
+    const canStudentCheckIn = activeSessionId != null && !hasCheckedIn;
 
     // Check-in pulse animation for active class
     useEffect(() => {
@@ -523,7 +526,8 @@ export function ClassDetailScreen() {
     }, []);
 
     const handleOpenBoundaryDraw = useCallback(() => {
-        setLocationRef.current?.open();
+        // "Draw GPS Boundary" is always a create-new action — start with a clean map.
+        setLocationRef.current?.open({ fresh: true });
     }, []);
 
     // ── Class management (edit / delete / share) ─────────────────────────────

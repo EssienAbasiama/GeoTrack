@@ -608,6 +608,11 @@ export const attendanceApi = {
             apiClient.post(`/sessions/${sessionId}/checkin`, body),
         ),
 
+    checkOut: (sessionId: number | string) =>
+        unwrap<{ record: ApiAttendanceRecord }>(
+            apiClient.post(`/sessions/${sessionId}/checkout`, {}),
+        ),
+
     myRecord: (sessionId: number | string) =>
         unwrap<{ record: ApiAttendanceRecord | null }>(
             apiClient.get(`/sessions/${sessionId}/my-record`),

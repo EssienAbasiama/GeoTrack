@@ -273,8 +273,15 @@ class FaceMatchService
         $distance = $this->hammingDistance($reference, $candidate);
         $confidence = max(0.0, 100.0 - ($distance / 256.0 * 100.0));
 
+        // The local average-hash is coarse (it compares whole-image structure,
+        // not facial identity), so two genuine selfies can differ by a wide
+        // margin. The accept distance is therefore configurable; tune
+        // FACE_LOCAL_MATCH_DISTANCE for your environment, or enable AWS
+        // Rekognition for real face matching.
+        $maxDistance = (int) config('face.local_match_distance', 96);
+
         return [
-            'matched' => $distance <= 12,
+            'matched' => $distance <= $maxDistance,
             'confidence' => $confidence,
         ];
     }

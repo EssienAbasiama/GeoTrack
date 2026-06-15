@@ -166,7 +166,8 @@ export interface ClassBoundary {
 }
 
 export interface SetBoundaryBottomSheetRef {
-    open:  () => void;
+    /** Pass `{ fresh: true }` to start a brand-new boundary (ignores existingLocation). */
+    open:  (options?: { fresh?: boolean }) => void;
     close: () => void;
 }
 
@@ -276,9 +277,11 @@ export const SetBoundaryBottomSheet = forwardRef<SetBoundaryBottomSheetRef, Prop
         };
 
         useImperativeHandle(ref, () => ({
-            open: () => {
+            open: (options) => {
                 resetAll();
-                if (existingLocation) {
+                // `fresh` starts a blank boundary; otherwise pre-load the existing
+                // one so it can be edited.
+                if (!options?.fresh && existingLocation) {
                     setLocationName(existingLocation.name || '');
                     if (existingLocation.polygonCoords?.length) {
                         setPoints(existingLocation.polygonCoords);

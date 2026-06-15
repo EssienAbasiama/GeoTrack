@@ -106,6 +106,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Attendance
         Route::post('/sessions/{session}/checkin', [AttendanceController::class, 'checkIn']);
+        Route::post('/sessions/{session}/checkout', [AttendanceController::class, 'checkOut']);
         Route::get('/sessions/{session}/my-record', [AttendanceController::class, 'myRecord']);
         Route::get('/me/attendance', [AttendanceController::class, 'myHistory']);
 

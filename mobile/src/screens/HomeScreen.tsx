@@ -1,5 +1,5 @@
 import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5, MaterialIcons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, RefreshControl, ScrollView, Text, View, Easing } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -9,9 +9,9 @@ import type { RootStackParamList } from "../types/navigation";
 import { useRole } from "../store/RoleContext";
 import { useAttendanceControl } from "../store/AttendanceControlContext";
 import { AdminCreateBottomSheet, type AdminCreateBottomSheetRef } from "../components/AdminCreateBottomSheet";
-import { dashboardApi } from "../services/apiClient";
+import { dashboardApi, attendanceApi } from "../services/apiClient";
 import { useAuth } from "../store/AuthContext";
-import type { ApiStudentDashboard, ApiLecturerDashboard, ApiAdminDashboard, ApiSession, ApiCourse } from "../types/api";
+import type { ApiStudentDashboard, ApiLecturerDashboard, ApiAdminDashboard, ApiSession, ApiCourse, ApiAttendanceRecord } from "../types/api";
 
 const avatarSource = { uri: "https://randomuser.me/api/portraits/men/32.jpg" };
 
@@ -37,6 +37,8 @@ export function HomeScreen() {
     const [lecturerDash, setLecturerDash] = useState<ApiLecturerDashboard | null>(null);
     const [adminDash, setAdminDash] = useState<ApiAdminDashboard | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [myRecord, setMyRecord] = useState<ApiAttendanceRecord | null>(null);
+    const [clockingOut, setClockingOut] = useState(false);
 
     const loadDashboards = async () => {
         try {
@@ -111,11 +113,11 @@ export function HomeScreen() {
                     endDate = new Date(now); endDate.setHours(e.h, e.min, 0, 0);
                 }
             }
-            if (!startDate || !endDate) return { course, startDate: null, endDate: null, isLive: false, isUpcoming: false };
+            if (!startDate || !endDate) return { course, session, startDate: null, endDate: null, isLive: false, isUpcoming: false };
             const t = now.getTime();
             const isLive = t >= startDate.getTime() && t <= endDate.getTime();
             const isUpcoming = t < startDate.getTime() && startDate.getTime() - t <= 15 * 60 * 1000;
-            return { course, startDate, endDate, isLive, isUpcoming };
+            return { course, session, startDate, endDate, isLive, isUpcoming };
         };
 
         const statuses = candidates.map(statusOf);
@@ -159,7 +161,46 @@ export function HomeScreen() {
     };
     const countdown = getCountdown();
     const attendanceEnabled = upcomingClass ? isAttendanceEnabled(upcomingClass.code) : false;
-    const canStudentCheckIn = countdown.canCheckIn && attendanceEnabled;
+    // Students and HOCs are class members who mark their own attendance, so they
+    // can check in whenever the class is live (an active session exists). The
+    // lecturer-side `attendanceEnabled` toggle only applies to lecturers.
+    const canStudentCheckIn = countdown.canCheckIn && (isStudent || isHOC || attendanceEnabled);
+
+    // ── Attendance record for the featured class (check-in / clock-out state) ──
+    const isMember = isStudent || isHOC;
+    const featuredSessionId = featured?.session?.id ?? null;
+
+    const loadMyRecord = useCallback(async () => {
+        if (!featuredSessionId || !isMember) { setMyRecord(null); return; }
+        try {
+            const { data } = await attendanceApi.myRecord(featuredSessionId);
+            setMyRecord(data.record);
+        } catch {
+            setMyRecord(null);
+        }
+    }, [featuredSessionId, isMember]);
+
+    useEffect(() => { loadMyRecord(); }, [loadMyRecord]);
+
+    // Re-check the attendance record when returning to Home (e.g. after check-in).
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => { loadMyRecord(); });
+        return unsubscribe;
+    }, [navigation, loadMyRecord]);
+
+    const hasCheckedIn = Boolean(myRecord?.checked_in_at);
+    const hasCheckedOut = Boolean(myRecord?.checked_out_at);
+
+    const fmtTime = (iso?: string | null) =>
+        iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '-- : --';
+    const checkInLabel = fmtTime(myRecord?.checked_in_at);
+    const checkOutLabel = fmtTime(myRecord?.checked_out_at);
+    const totalLabel = (() => {
+        if (!myRecord?.checked_in_at) return '00:00h';
+        const end = myRecord.checked_out_at ? new Date(myRecord.checked_out_at) : now;
+        const mins = Math.max(0, Math.floor((end.getTime() - new Date(myRecord.checked_in_at).getTime()) / 60000));
+        return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}h`;
+    })();
 
     // --- Screen fade animation ---
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -267,8 +308,29 @@ export function HomeScreen() {
         });
     };
 
+    const handleClockOut = async () => {
+        if (!featuredSessionId || clockingOut) return;
+        setClockingOut(true);
+        try {
+            const { data } = await attendanceApi.checkOut(featuredSessionId);
+            setMyRecord(data.record);
+            Toast.show({ type: 'success', text1: 'Clocked out. Have a great day!', position: 'bottom' });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not clock out.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        } finally {
+            setClockingOut(false);
+        }
+    };
+
     const handleStudentAction = () => {
         if (!upcomingClass) return;
+        // Already checked in and still in session → clock out.
+        if (hasCheckedIn && !hasCheckedOut) {
+            handleClockOut();
+            return;
+        }
+        if (hasCheckedOut) return; // done for this session
         if (canStudentCheckIn) {
             handleStudentCheckIn();
         } else {
@@ -330,18 +392,27 @@ export function HomeScreen() {
     // No actionable class for a student/lecturer when nothing is in session.
     const noActiveClass = !isSuperAdmin && !upcomingClass;
     const isLecturerLive = isLecturer && countdown.isLive;
-    const shouldShowDirections = !isSuperAdmin && !isLecturerLive && ((isLecturer && !countdown.isLive) || !canStudentCheckIn);
+    // Member (student/HOC) attendance states for the featured class.
+    const memberCheckedIn = isMember && hasCheckedIn && !hasCheckedOut;
+    const memberDone = isMember && hasCheckedOut;
+    const shouldShowDirections =
+        !isSuperAdmin && !isLecturerLive && !memberCheckedIn && !memberDone &&
+        ((isLecturer && !countdown.isLive) || !canStudentCheckIn);
     const mainButtonColor = noActiveClass
         ? '#C1C4CE'
-        : isSuperAdmin
+        : memberDone
             ? '#4CAF50'
-            : isLecturerLive
-                ? attendanceEnabled
-                    ? '#EF4444'
-                    : '#4CAF50'
-                : shouldShowDirections
-                    ? '#6343cc'
-                    : '#4CAF50';
+            : memberCheckedIn
+                ? '#EF4444'
+                : isSuperAdmin
+                    ? '#4CAF50'
+                    : isLecturerLive
+                        ? attendanceEnabled
+                            ? '#EF4444'
+                            : '#4CAF50'
+                        : shouldShowDirections
+                            ? '#6343cc'
+                            : '#4CAF50';
 
     const mainShadowColor = mainButtonColor;
 
@@ -413,17 +484,27 @@ export function HomeScreen() {
                             <View className="flex-row items-center justify-between">
                                 <View className="flex-1 items-center">
                                     <Text className="font-sans text-[10px] text-[#C1C4CE]">Check in</Text>
-                                    <Text className="mt-1 font-medium text-[14px] text-[#7E818D]">-- : --</Text>
+                                    <Text
+                                        className="mt-1 font-medium text-[14px]"
+                                        style={{ color: hasCheckedIn ? '#4CAF50' : '#7E818D' }}
+                                    >
+                                        {checkInLabel}
+                                    </Text>
                                 </View>
                                 <View className="h-9 w-[1px] bg-[#E7E8EE]" />
                                 <View className="flex-1 items-center">
                                     <Text className="font-sans text-[10px] text-[#C1C4CE]">Check Out</Text>
-                                    <Text className="mt-1 font-medium text-[14px] text-[#7E818D]">-- : --</Text>
+                                    <Text
+                                        className="mt-1 font-medium text-[14px]"
+                                        style={{ color: hasCheckedOut ? '#EF4444' : '#7E818D' }}
+                                    >
+                                        {checkOutLabel}
+                                    </Text>
                                 </View>
                                 <View className="h-9 w-[1px] bg-[#E7E8EE]" />
                                 <View className="flex-1 items-center">
                                     <Text className="font-sans text-[10px] text-[#C1C4CE]">Total hour</Text>
-                                    <Text className="mt-1 font-heading text-[18px] text-[#2E3036]">00:00h</Text>
+                                    <Text className="mt-1 font-heading text-[18px] text-[#2E3036]">{totalLabel}</Text>
                                 </View>
                             </View>
                         </View>
@@ -568,6 +649,20 @@ export function HomeScreen() {
                                             <MaterialCommunityIcons name="clock-outline" size={32} color="#fff" />
                                             <Text className="mt-2 font-heading text-[13px] text-white text-center px-2">
                                                 No Active Class
+                                            </Text>
+                                        </>
+                                    ) : memberDone ? (
+                                        <>
+                                            <Ionicons name="checkmark-done" size={32} color="#fff" />
+                                            <Text className="mt-2 font-heading text-[14px] text-white text-center px-2">
+                                                Checked Out
+                                            </Text>
+                                        </>
+                                    ) : memberCheckedIn ? (
+                                        <>
+                                            <MaterialCommunityIcons name="logout" size={30} color="#fff" />
+                                            <Text className="mt-2 font-heading text-[15px] text-white">
+                                                {clockingOut ? 'Clocking…' : 'Clock Out'}
                                             </Text>
                                         </>
                                     ) : isSuperAdmin ? (

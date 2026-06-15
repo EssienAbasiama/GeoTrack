@@ -164,6 +164,37 @@ class AttendanceController extends Controller
         ], 201);
     }
 
+    public function checkOut(Request $request, AttendanceSession $session): JsonResponse
+    {
+        $user = $request->user();
+
+        $record = AttendanceRecord::query()
+            ->where('session_id', $session->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$record || !$record->checked_in_at) {
+            return response()->json([
+                'message' => 'You have not checked in to this session.',
+            ], 422);
+        }
+
+        if ($record->checked_out_at) {
+            return response()->json([
+                'message' => 'You have already checked out.',
+                'data' => ['record' => $record],
+            ]);
+        }
+
+        $record->checked_out_at = now();
+        $record->save();
+
+        return response()->json([
+            'message' => 'Checked out successfully.',
+            'data' => ['record' => $record],
+        ]);
+    }
+
     public function myRecord(Request $request, AttendanceSession $session): JsonResponse
     {
         $record = AttendanceRecord::query()

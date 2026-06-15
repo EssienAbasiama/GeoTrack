@@ -169,6 +169,7 @@ export interface ApiAttendanceRecord {
         avatar_url?: string | null;
     };
     checked_in_at: string;
+    checked_out_at?: string | null;
     latitude?: number | null;
     longitude?: number | null;
     accuracy_m?: number | null;
