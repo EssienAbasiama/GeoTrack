@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { sessionApi } from '../services/apiClient';
@@ -28,6 +30,7 @@ export function LecturerSessionScreen({ route, navigation }: Props) {
     const [refreshing, setRefreshing] = useState(false);
     const [triggering, setTriggering] = useState(false);
     const [closing, setClosing] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const loadRecords = useCallback(async () => {
@@ -85,6 +88,45 @@ export function LecturerSessionScreen({ route, navigation }: Props) {
             Toast.show({ type: 'error', text1: msg, position: 'bottom' });
         } finally {
             setTriggering(false);
+        }
+    };
+
+    const handleExportCsv = async () => {
+        if (records.length === 0) {
+            Toast.show({ type: 'info', text1: 'No attendance to export yet.', position: 'bottom' });
+            return;
+        }
+        setExporting(true);
+        try {
+            const csv = await sessionApi.recordsCsv(sessionId);
+            const date = session?.starts_at
+                ? new Date(session.starts_at).toISOString().slice(0, 10)
+                : new Date().toISOString().slice(0, 10);
+            const safeCode = (classCode || 'class').replace(/[^A-Za-z0-9_-]/g, '_');
+            const filename = `${safeCode}_${date}_attendance.csv`;
+
+            const file = new File(Paths.cache, filename);
+            file.create({ overwrite: true });
+            file.write(csv);
+
+            if (!(await Sharing.isAvailableAsync())) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Sharing is not available on this device.',
+                    position: 'bottom',
+                });
+                return;
+            }
+            await Sharing.shareAsync(file.uri, {
+                mimeType: 'text/csv',
+                dialogTitle: `${classCode} attendance`,
+                UTI: 'public.comma-separated-values-text',
+            });
+        } catch (err) {
+            const msg = (err as any)?.response?.data?.message ?? 'Could not export attendance CSV.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        } finally {
+            setExporting(false);
         }
     };
 
@@ -154,6 +196,25 @@ export function LecturerSessionScreen({ route, navigation }: Props) {
                     </Text>
                     <Text className="text-[12px] text-[#8F94A4]">Started</Text>
                 </View>
+            </View>
+
+            <View className="px-5 mb-3">
+                <Pressable
+                    onPress={handleExportCsv}
+                    disabled={exporting}
+                    className="h-11 items-center justify-center rounded-full border border-[#6343cc] bg-white flex-row"
+                >
+                    {exporting ? (
+                        <ActivityIndicator color={PRIMARY} />
+                    ) : (
+                        <>
+                            <Ionicons name="download-outline" size={18} color={PRIMARY} />
+                            <Text className="ml-2 font-medium text-[14px] text-[#6343cc]">
+                                Download attendance (CSV)
+                            </Text>
+                        </>
+                    )}
+                </Pressable>
             </View>
 
             {isActive && (

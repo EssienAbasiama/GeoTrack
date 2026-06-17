@@ -35,7 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ->name('sessions:close-expired')
             ->withoutOverlapping();
 
-        $schedule->command(NotifyUpcomingClasses::class)
+        $schedule->command(NotifyUpcomingClasses::class, ['--lead=10'])
             ->everyMinute()
             ->name('classes:notify-upcoming')
             ->withoutOverlapping();

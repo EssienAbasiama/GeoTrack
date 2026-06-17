@@ -205,6 +205,9 @@ export function ClassDetailScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [hasCheckedIn, setHasCheckedIn] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+    // Most recent session (active or closed) so a lecturer can open it to view
+    // the day's attendance and download the CSV after class.
+    const [latestSessionId, setLatestSessionId] = useState<number | null>(null);
     const searchAnim = useRef(new Animated.Value(0)).current;
     const checkInPulse = useRef(new Animated.Value(1)).current;
     const fabRotate = useRef(new Animated.Value(0)).current;
@@ -217,11 +220,12 @@ export function ClassDetailScreen() {
         let mounted = true;
         (async () => {
             try {
-                const [courseRes, studentsRes, fenceRes, sessionRes] = await Promise.all([
+                const [courseRes, studentsRes, fenceRes, sessionRes, sessionsListRes] = await Promise.all([
                     courseApi.get(classId).catch(() => null),
                     courseApi.students(classId).catch(() => null),
                     geofenceApi.get(classId).catch(() => null),
                     sessionApi.active(classId).catch(() => null),
+                    sessionApi.list(classId).catch(() => null),
                 ]);
                 if (!mounted) return;
 
@@ -284,6 +288,15 @@ export function ClassDetailScreen() {
 
                 if (sessionRes?.data?.session) {
                     setActiveSessionId(sessionRes.data.session.id);
+                }
+
+                // Sessions come back ordered newest-first; keep the latest one so
+                // the lecturer can reopen it to view/download attendance.
+                const latest = sessionsListRes?.data?.sessions?.[0];
+                if (latest?.id) {
+                    setLatestSessionId(latest.id);
+                } else if (sessionRes?.data?.session?.id) {
+                    setLatestSessionId(sessionRes.data.session.id);
                 }
             } catch {
                 // Soft-fail: leave lists empty rather than showing stale data.
@@ -630,6 +643,7 @@ export function ClassDetailScreen() {
         try {
             const { data } = await sessionApi.start(classId);
             setActiveSessionId(data.session.id);
+            setLatestSessionId(data.session.id);
             navigation.navigate('LecturerSession', {
                 sessionId: data.session.id,
                 courseId: classId,
@@ -693,6 +707,36 @@ export function ClassDetailScreen() {
                         )}
                     </View>
                 </View>
+
+                {/* Lecturer: open the latest session to view & download attendance */}
+                {(isLecturer || isSuperAdmin) && latestSessionId && (
+                    <View className="px-5 mb-4">
+                        <Pressable
+                            onPress={() =>
+                                navigation.navigate('LecturerSession', {
+                                    sessionId: latestSessionId,
+                                    courseId: classId,
+                                    classCode,
+                                    className,
+                                })
+                            }
+                            className="flex-row items-center rounded-[16px] bg-white p-4 shadow-sm shadow-black/5"
+                        >
+                            <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#F0EDFC]">
+                                <Ionicons name="document-text-outline" size={18} color={PRIMARY_COLOR} />
+                            </View>
+                            <View className="ml-3 flex-1">
+                                <Text className="font-medium text-[14px] text-[#181A20]">
+                                    Today&apos;s attendance
+                                </Text>
+                                <Text className="text-[12px] text-[#8F94A4]">
+                                    View check-ins and download CSV
+                                </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color="#B8BBC6" />
+                        </Pressable>
+                    </View>
+                )}
 
                 {/* Class Schedule Details */}
                 <View className="px-5 mb-4">

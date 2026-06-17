@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AttendanceRecord;
 use App\Models\AttendanceSession;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
@@ -161,5 +162,149 @@ class SessionLifecycleTest extends TestCase
 
         $res->assertStatus(200);
         $res->assertJsonPath('data.session.status', 'active');
+    }
+
+    public function test_closing_session_auto_checks_out_students(): void
+    {
+        Sanctum::actingAs($this->lecturer);
+
+        $endsAt = now()->addHour();
+        $session = AttendanceSession::create([
+            'course_id' => $this->course->id,
+            'opened_by' => $this->lecturer->id,
+            'mode' => 'tap',
+            'starts_at' => now()->subMinutes(5),
+            'ends_at' => $endsAt,
+            'status' => 'active',
+        ]);
+
+        $student = User::factory()->create(['role' => 'student']);
+        $device = Device::create([
+            'user_id' => $student->id,
+            'device_uid' => 'dev-close-1',
+            'platform' => 'android',
+            'bound_at' => now(),
+        ]);
+        $record = AttendanceRecord::create([
+            'session_id' => $session->id,
+            'user_id' => $student->id,
+            'device_id' => $device->id,
+            'status' => 'present',
+            'checked_in_at' => now()->subMinutes(3),
+            'checked_out_at' => null,
+        ]);
+
+        $this->postJson("/api/sessions/{$session->id}/close")->assertStatus(200);
+
+        $record->refresh();
+        $this->assertNotNull($record->checked_out_at, 'Student should be auto-checked-out on close.');
+        $this->assertEquals(
+            $endsAt->toDateTimeString(),
+            $record->checked_out_at->toDateTimeString(),
+            'Checkout time should be the session end time.',
+        );
+    }
+
+    public function test_close_expired_command_auto_checks_out_students(): void
+    {
+        $endsAt = now()->subMinute();
+        $session = AttendanceSession::create([
+            'course_id' => $this->course->id,
+            'opened_by' => $this->lecturer->id,
+            'mode' => 'tap',
+            'starts_at' => now()->subHour(),
+            'ends_at' => $endsAt,
+            'status' => 'active',
+        ]);
+
+        $student = User::factory()->create(['role' => 'student']);
+        $device = Device::create([
+            'user_id' => $student->id,
+            'device_uid' => 'dev-expire-1',
+            'platform' => 'android',
+            'bound_at' => now(),
+        ]);
+        $record = AttendanceRecord::create([
+            'session_id' => $session->id,
+            'user_id' => $student->id,
+            'device_id' => $device->id,
+            'status' => 'present',
+            'checked_in_at' => now()->subMinutes(40),
+            'checked_out_at' => null,
+        ]);
+
+        $this->artisan('geotrack:close-expired-sessions')->assertExitCode(0);
+
+        $session->refresh();
+        $record->refresh();
+        $this->assertEquals('closed', $session->status);
+        $this->assertEquals(
+            $endsAt->toDateTimeString(),
+            $record->checked_out_at?->toDateTimeString(),
+        );
+    }
+
+    public function test_lecturer_can_export_attendance_csv(): void
+    {
+        Sanctum::actingAs($this->lecturer);
+
+        $session = AttendanceSession::create([
+            'course_id' => $this->course->id,
+            'opened_by' => $this->lecturer->id,
+            'mode' => 'tap',
+            'starts_at' => now()->subMinutes(30),
+            'ends_at' => now()->addMinutes(30),
+            'status' => 'active',
+        ]);
+
+        $student = User::factory()->create([
+            'role' => 'student',
+            'name' => 'Ada Lovelace',
+            'matric_no' => 'CSC/2020/001',
+        ]);
+        $device = Device::create([
+            'user_id' => $student->id,
+            'device_uid' => 'dev-csv-1',
+            'platform' => 'android',
+            'bound_at' => now(),
+        ]);
+        AttendanceRecord::create([
+            'session_id' => $session->id,
+            'user_id' => $student->id,
+            'device_id' => $device->id,
+            'status' => 'present',
+            'checked_in_at' => now()->subMinutes(20),
+            'checked_out_at' => now()->subMinutes(1),
+            'within_geofence' => true,
+            'face_verified' => true,
+            'present_throughout' => true,
+        ]);
+
+        $res = $this->get("/api/sessions/{$session->id}/records/csv");
+
+        $res->assertStatus(200);
+        $res->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $body = $res->streamedContent();
+        $this->assertStringContainsString('Matric No', $body);
+        $this->assertStringContainsString('Checked Out', $body);
+        $this->assertStringContainsString('Ada Lovelace', $body);
+        $this->assertStringContainsString('CSC/2020/001', $body);
+    }
+
+    public function test_non_owner_cannot_export_attendance_csv(): void
+    {
+        $other = User::factory()->create(['role' => 'lecturer']);
+        Sanctum::actingAs($other);
+
+        $session = AttendanceSession::create([
+            'course_id' => $this->course->id,
+            'opened_by' => $this->lecturer->id,
+            'mode' => 'tap',
+            'starts_at' => now()->subMinutes(30),
+            'ends_at' => now()->addMinutes(30),
+            'status' => 'active',
+        ]);
+
+        $this->get("/api/sessions/{$session->id}/records/csv")->assertStatus(403);
     }
 }

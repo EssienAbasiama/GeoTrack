@@ -103,6 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/sessions/{session}', [SessionController::class, 'show']);
         Route::post('/sessions/{session}/close', [SessionController::class, 'close']);
         Route::get('/sessions/{session}/records', [SessionController::class, 'records']);
+        Route::get('/sessions/{session}/records/csv', [SessionController::class, 'exportCsv']);
 
         // Attendance
         Route::post('/sessions/{session}/checkin', [AttendanceController::class, 'checkIn']);

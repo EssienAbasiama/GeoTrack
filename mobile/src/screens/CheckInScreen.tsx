@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import MapView, { Circle, Marker, Polygon } from 'react-native-maps';
+import MapView, { Circle, Marker, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { BlurView } from 'expo-blur';
 import Toast from 'react-native-toast-message';
@@ -429,6 +429,7 @@ export function CheckInScreen({ route, navigation }: Props) {
             <View className="flex-1 bg-[#1E2130]">
                 <MapView
                     ref={(ref) => { mapRef.current = ref; }}
+                    provider={PROVIDER_GOOGLE}
                     style={{ flex: 1 }}
                     initialRegion={initialRegion}
                     showsUserLocation

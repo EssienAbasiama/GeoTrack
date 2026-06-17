@@ -179,15 +179,86 @@ class SessionController extends Controller
             ], 422);
         }
 
-        $session->update([
-            'status' => 'closed',
-            'closed_at' => now(),
-            'closed_by' => $user->id,
-        ]);
+        $now = now();
+        DB::transaction(function () use ($session, $now, $user) {
+            // Auto-check-out any student still checked in when the lecturer ends
+            // the session, using the session end time as the checkout instant.
+            \App\Models\AttendanceRecord::query()
+                ->where('session_id', $session->id)
+                ->whereNotNull('checked_in_at')
+                ->whereNull('checked_out_at')
+                ->update(['checked_out_at' => $session->ends_at ?? $now]);
+
+            $session->update([
+                'status' => 'closed',
+                'closed_at' => $now,
+                'closed_by' => $user->id,
+            ]);
+        });
 
         return response()->json([
             'message' => 'Session closed.',
             'data' => ['session' => $session->fresh()],
+        ]);
+    }
+
+    /**
+     * Export the day's attendance for a session as a downloadable CSV file.
+     * Lists each student with their check-in and check-out times.
+     */
+    public function exportCsv(Request $request, AttendanceSession $session)
+    {
+        $user = $request->user();
+        $course = $session->course;
+        if (!$user->isAdmin() && $course->lecturer_id !== $user->id) {
+            return response()->json([
+                'message' => 'You are not authorised to export records for this session.',
+            ], 403);
+        }
+
+        $records = $session->records()
+            ->with('user:id,name,matric_no,email')
+            ->orderBy('checked_in_at')
+            ->get();
+
+        $columns = [
+            'S/N', 'Matric No', 'Name', 'Email', 'Status',
+            'Checked In', 'Checked Out', 'Within Geofence',
+            'Face Verified', 'Present Throughout', 'Distance (m)',
+        ];
+
+        $fmt = static fn ($dt): string => $dt ? $dt->format('Y-m-d H:i:s') : '';
+
+        $callback = function () use ($records, $columns, $fmt): void {
+            $out = fopen('php://output', 'w');
+            // UTF-8 BOM so Excel renders accents/symbols correctly.
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, $columns);
+            $i = 1;
+            foreach ($records as $r) {
+                fputcsv($out, [
+                    $i++,
+                    $r->user->matric_no ?? '',
+                    $r->user->name ?? '',
+                    $r->user->email ?? '',
+                    ucfirst((string) $r->status),
+                    $fmt($r->checked_in_at),
+                    $fmt($r->checked_out_at),
+                    $r->within_geofence ? 'Yes' : 'No',
+                    $r->face_verified ? 'Yes' : 'No',
+                    $r->present_throughout ? 'Yes' : 'No',
+                    $r->distance_from_center_m !== null ? round((float) $r->distance_from_center_m, 1) : '',
+                ]);
+            }
+            fclose($out);
+        };
+
+        $code = $course->code ?? 'class';
+        $date = optional($session->starts_at)->format('Y-m-d') ?? now()->format('Y-m-d');
+        $filename = preg_replace('/[^A-Za-z0-9_\-.]/', '_', "{$code}_{$date}_attendance.csv");
+
+        return response()->streamDownload($callback, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 

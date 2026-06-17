@@ -587,6 +587,15 @@ export const sessionApi = {
     records: (id: number | string) =>
         unwrap<{ records: ApiAttendanceRecord[] }>(apiClient.get(`/sessions/${id}/records`)),
 
+    /** Fetch the day's attendance as a raw CSV string (for download/share). */
+    recordsCsv: (id: number | string) =>
+        apiClient
+            .get<string>(`/sessions/${id}/records/csv`, {
+                responseType: 'text',
+                transformResponse: (data) => data,
+            })
+            .then((res) => res.data),
+
     manualPresenceCheck: (id: number | string) =>
         unwrap<{ presence_check: ApiPresenceCheck }>(
             apiClient.post(`/sessions/${id}/presence-check`, {}),

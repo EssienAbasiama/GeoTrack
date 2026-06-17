@@ -153,7 +153,9 @@ export function HomeScreen() {
             return { minutes: 0, seconds: 0, isLive: false, canCheckIn: false };
         }
         const diff = featured.startDate.getTime() - now.getTime();
-        const canCheckIn = featured.isLive || featured.isUpcoming;
+        // Students can only clock in once the class is actually live. During the
+        // pre-start countdown (isUpcoming) the button stays disabled/Directions.
+        const canCheckIn = featured.isLive;
         if (diff <= 0) return { minutes: 0, seconds: 0, isLive: featured.isLive, canCheckIn };
         const minutes = Math.floor(diff / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
