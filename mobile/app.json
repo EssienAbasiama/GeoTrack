@@ -13,9 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.devabasiama.geotrack"
     },
     "android": {
+      "package": "com.devabasiama.geotrack",
       "adaptiveIcon": {
         "backgroundColor": "#6343cc",
         "foregroundImage": "./assets/Images/White-without-bg.png"

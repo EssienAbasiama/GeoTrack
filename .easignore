@@ -1,0 +1,18 @@
+# Files EAS Build should NOT upload when building the mobile (Expo) app.
+# Uses .gitignore syntax. This lives at the repo root because EAS archives the
+# whole git repository for the build.
+#
+# The Expo app in mobile/ is self-contained and does not depend on the Laravel
+# backend. Excluding the backend also avoids a Windows symlink
+# (backend/public/storage) that breaks the EAS upload, and keeps the archive small.
+
+/backend
+
+# Report / documentation artifacts and build scripts — not needed for the app.
+/docs
+*.docx
+*.pptx
+*.py
+~$*
+GeoTrack_*
+Post-Data-Slide*

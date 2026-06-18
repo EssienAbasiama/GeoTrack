@@ -17,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust the ngrok (or any) reverse proxy so Laravel detects the original
+        // HTTPS scheme and host, generating correct https:// URLs for assets
+        // such as stored face images served behind the tunnel.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'bound.device' => EnsureBoundDevice::class,
         ]);
