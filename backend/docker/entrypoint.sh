@@ -24,6 +24,13 @@ if [ ! -f /data/.seeded ]; then
   su-exec www-data php artisan db:seed --force && su-exec www-data touch /data/.seeded
 fi
 
+# One-time addition of the Electrical & Electronics Engineering (EEE) classes.
+# Separate marker so it applies once to the already-seeded database.
+if [ ! -f /data/.seeded-eee ]; then
+  echo "Seeding EEE classes (first run)..."
+  su-exec www-data php artisan db:seed --class=ElectricalEngineeringSeeder --force && su-exec www-data touch /data/.seeded-eee
+fi
+
 # Symlink public/storage -> storage/app/public (ignore if it already exists).
 su-exec www-data php artisan storage:link 2>/dev/null || true
 
