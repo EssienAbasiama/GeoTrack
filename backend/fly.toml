@@ -1,0 +1,43 @@
+app = "geotrack"
+primary_region = "jnb"
+
+[build]
+
+[env]
+  APP_ENV = "production"
+  APP_DEBUG = "false"
+  APP_URL = "https://geotrack.fly.dev"
+  LOG_CHANNEL = "stderr"
+  LOG_LEVEL = "info"
+
+  DB_CONNECTION = "sqlite"
+  DB_DATABASE = "/data/database.sqlite"
+
+  SESSION_DRIVER = "database"
+  QUEUE_CONNECTION = "database"
+  CACHE_STORE = "database"
+
+  # Mail (non-secret parts). MAIL_PASSWORD is set via `fly secrets set`.
+  MAIL_MAILER = "smtp"
+  MAIL_SCHEME = "null"
+  MAIL_HOST = "smtp.gmail.com"
+  MAIL_PORT = "587"
+  MAIL_USERNAME = "essienabasiama11@gmail.com"
+  MAIL_FROM_ADDRESS = "essienabasiama11@gmail.com"
+  MAIL_FROM_NAME = "GeoTrack"
+
+# Persistent disk so the SQLite database survives redeploys/restarts.
+[[mounts]]
+  source = "geotrack_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

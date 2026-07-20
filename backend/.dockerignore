@@ -1,0 +1,26 @@
+# Never ship these into the image
+.env
+.env.*
+!.env.example
+
+# Rebuilt inside the image
+/vendor
+/node_modules
+
+# Local SQLite DB — a fresh one is created on the Fly volume at /data
+/database/database.sqlite
+/database/*.sqlite-journal
+
+# public/storage is a symlink (recreated at boot via `artisan storage:link`).
+# Leaving it in breaks the Windows build: "archive/tar: unknown file mode".
+/public/storage
+
+# Dev/CI noise
+/storage/logs/*
+/tests
+/.git
+/.github
+.phpunit.result.cache
+Dockerfile
+.dockerignore
+fly.toml
