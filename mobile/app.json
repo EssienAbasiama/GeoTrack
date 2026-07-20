@@ -3,6 +3,7 @@
     "name": "GeoTrack",
     "slug": "geotrack",
     "owner": "devabasiama",
+    "scheme": "geotrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Images/Logo.png",
