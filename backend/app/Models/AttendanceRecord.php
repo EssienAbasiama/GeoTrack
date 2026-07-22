@@ -59,6 +59,12 @@ class AttendanceRecord extends Model
     {
         $total = (int) $this->minutes_present;
 
+        // Records made before per-stint logging existed have no banked minutes,
+        // so fall back to the plain check-in → check-out span.
+        if ($total === 0 && !$this->last_entry_at && $this->checked_in_at && $this->checked_out_at) {
+            return max(0, (int) round($this->checked_in_at->diffInMinutes($this->checked_out_at)));
+        }
+
         if (!$this->checked_out_at && $this->last_entry_at) {
             $end = $until ? \Illuminate\Support\Carbon::instance($until) : now();
             if ($end->greaterThan(now())) {
