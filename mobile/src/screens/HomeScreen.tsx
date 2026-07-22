@@ -332,7 +332,11 @@ export function HomeScreen() {
             handleClockOut();
             return;
         }
-        if (hasCheckedOut) return; // done for this session
+        // Clocked out, but the class is still running → let them clock in again.
+        if (hasCheckedOut) {
+            if (canStudentCheckIn) handleStudentCheckIn();
+            return;
+        }
         if (canStudentCheckIn) {
             handleStudentCheckIn();
         } else {
@@ -397,6 +401,9 @@ export function HomeScreen() {
     // Member (student/HOC) attendance states for the featured class.
     const memberCheckedIn = isMember && hasCheckedIn && !hasCheckedOut;
     const memberDone = isMember && hasCheckedOut;
+    // Clocking out doesn't end the class. While the session is still live the
+    // student can walk back in and clock in again, so the button stays actionable.
+    const memberCanReturn = memberDone && canStudentCheckIn;
     const shouldShowDirections =
         !isSuperAdmin && !isLecturerLive && !memberCheckedIn && !memberDone &&
         ((isLecturer && !countdown.isLive) || !canStudentCheckIn);
@@ -655,10 +662,15 @@ export function HomeScreen() {
                                         </>
                                     ) : memberDone ? (
                                         <>
-                                            <Ionicons name="checkmark-done" size={32} color="#fff" />
-                                            <Text className="mt-2 font-heading text-[14px] text-white text-center px-2">
+                                            <Ionicons name="checkmark-done" size={28} color="#fff" />
+                                            <Text className="mt-1 font-heading text-[14px] text-white text-center px-2">
                                                 Checked Out
                                             </Text>
+                                            {memberCanReturn && (
+                                                <Text className="mt-1 font-heading text-[11px] text-[#E8F5E9] text-center px-2">
+                                                    Clock In Again
+                                                </Text>
+                                            )}
                                         </>
                                     ) : memberCheckedIn ? (
                                         <>

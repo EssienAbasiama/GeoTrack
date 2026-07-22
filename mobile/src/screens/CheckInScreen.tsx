@@ -22,6 +22,7 @@ import type { RootStackParamList } from '../types/navigation';
 import { attendanceApi, faceApi, geofenceApi, sessionApi } from '../services/apiClient';
 import type { ApiGeofence, ApiSession } from '../types/api';
 import { notifyCheckInSuccess } from '../services/notifications';
+import { getDemoMode } from '../utils/demoMode';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CheckIn'>;
 
@@ -101,6 +102,8 @@ export function CheckInScreen({ route, navigation }: Props) {
     const [success, setSuccess] = useState(false);
     // null = still checking; true/false = enrolled state of the student's face.
     const [faceEnrolled, setFaceEnrolled] = useState<boolean | null>(null);
+    // Hidden "Simulation mode" — when on, face verification is auto-passed.
+    const [demoMode, setDemoMode] = useState(false);
 
     const sheetY = useRef(new Animated.Value(120)).current;
     const successScale = useRef(new Animated.Value(0)).current;
@@ -142,6 +145,7 @@ export function CheckInScreen({ route, navigation }: Props) {
     useEffect(() => {
         if (!isFocused) return;
         let mounted = true;
+        getDemoMode().then((on) => { if (mounted) setDemoMode(on); });
         faceApi
             .status()
             .then(({ data }) => { if (mounted) setFaceEnrolled(Boolean(data.profile)); })
@@ -208,7 +212,7 @@ export function CheckInScreen({ route, navigation }: Props) {
     }, [userLocation, geofence]);
 
     // ── Submit ───────────────────────────────────────────────────────────────
-    const submitCheckIn = async (faceBase64?: string) => {
+    const submitCheckIn = async (faceBase64?: string, demoBypass = false) => {
         if (!session || !userLocation) return;
 
         setSubmitting(true);
@@ -218,6 +222,7 @@ export function CheckInScreen({ route, navigation }: Props) {
                 longitude: userLocation.longitude,
                 accuracy: accuracy ?? undefined,
                 face_image_base64: faceBase64,
+                demo_bypass: demoBypass || undefined,
             });
 
             setSuccess(true);
@@ -248,6 +253,13 @@ export function CheckInScreen({ route, navigation }: Props) {
 
     const handleCheckIn = async () => {
         if (!session || !userLocation || submitting) return;
+
+        // Simulation mode — skip the live selfie entirely and auto-verify.
+        if (demoMode) {
+            Toast.show({ type: 'success', text1: 'Face verified', position: 'bottom' });
+            await submitCheckIn(undefined, true);
+            return;
+        }
 
         // Identity check: a face must be enrolled and a live selfie captured.
         if (faceEnrolled === false) {
@@ -559,7 +571,7 @@ export function CheckInScreen({ route, navigation }: Props) {
                                 </View>
                             </View>
 
-                            {faceEnrolled === false ? (
+                            {faceEnrolled === false && !demoMode ? (
                                 // Identity gate — must enroll a reference face first.
                                 <>
                                     <View className="flex-row items-start rounded-[14px] bg-[#FFF8E1] border border-[#FFE082] px-4 py-3 mb-3">
@@ -579,10 +591,10 @@ export function CheckInScreen({ route, navigation }: Props) {
                             ) : (
                                 <Pressable
                                     onPress={handleCheckIn}
-                                    disabled={submitting || !insideFence || !userLocation || faceEnrolled === null}
+                                    disabled={submitting || !insideFence || !userLocation || (!demoMode && faceEnrolled === null)}
                                     className="h-12 items-center justify-center rounded-full flex-row"
                                     style={{
-                                        backgroundColor: insideFence && faceEnrolled !== null ? PRIMARY : '#C7C9D2',
+                                        backgroundColor: insideFence && (demoMode || faceEnrolled !== null) ? PRIMARY : '#C7C9D2',
                                     }}
                                 >
                                     {submitting ? (
@@ -595,7 +607,7 @@ export function CheckInScreen({ route, navigation }: Props) {
                                                 color="#FFFFFF"
                                             />
                                             <Text className="ml-2 font-medium text-[15px] text-white">
-                                                {faceEnrolled === null ? 'Preparing…' : 'Verify face & check in'}
+                                                {!demoMode && faceEnrolled === null ? 'Preparing…' : 'Verify face & check in'}
                                             </Text>
                                         </>
                                     )}

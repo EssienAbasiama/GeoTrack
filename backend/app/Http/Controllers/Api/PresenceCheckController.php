@@ -51,7 +51,10 @@ class PresenceCheckController extends Controller
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
             'face_image_base64' => ['nullable', 'string'],
+            'demo_bypass' => ['nullable', 'boolean'],
         ]);
+
+        $demo = config('geotrack.demo_mode') && $request->boolean('demo_bypass');
 
         $user = $request->user();
         $now = now();
@@ -86,7 +89,10 @@ class PresenceCheckController extends Controller
         $faceVerified = false;
         $faceConfidence = null;
         $faceImagePath = null;
-        if (!empty($validated['face_image_base64'])) {
+        if ($demo) {
+            // Simulation override — identity treated as verified, no matching.
+            $faceVerified = true;
+        } elseif (!empty($validated['face_image_base64'])) {
             $result = $this->faceMatch->verify($user, $validated['face_image_base64']);
             $faceVerified = (bool) $result['matched'];
             $faceConfidence = (float) $result['confidence'];

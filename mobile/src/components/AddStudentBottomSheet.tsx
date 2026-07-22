@@ -8,7 +8,6 @@ import {
     useState,
 } from 'react';
 import {
-    Image,
     Keyboard,
     Modal,
     Pressable,
@@ -26,75 +25,22 @@ import {
     BottomSheetBackdropProps,
     BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
+import { courseApi } from '../services/apiClient';
 
 const PRIMARY_COLOR = '#6343cc';
 
-// Mock student database for searching
-const STUDENT_DATABASE = [
-    {
-        id: 'db1',
-        name: 'Adaeze Nwankwo',
-        matricNo: '180404010',
-        email: 'adaeze.nwankwo@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/22.jpg',
-    },
-    {
-        id: 'db2',
-        name: 'Chukwuemeka Obi',
-        matricNo: '180404011',
-        email: 'chukwuemeka.obi@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/33.jpg',
-    },
-    {
-        id: 'db3',
-        name: 'Ifeoma Ugwu',
-        matricNo: '180404012',
-        email: 'ifeoma.ugwu@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/35.jpg',
-    },
-    {
-        id: 'db4',
-        name: 'Tochukwu Eze',
-        matricNo: '180404013',
-        email: 'tochukwu.eze@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/41.jpg',
-    },
-    {
-        id: 'db5',
-        name: 'Chiamaka Okoro',
-        matricNo: '180404014',
-        email: 'chiamaka.okoro@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/48.jpg',
-    },
-    {
-        id: 'db6',
-        name: 'Obinna Nnamdi',
-        matricNo: '180404015',
-        email: 'obinna.nnamdi@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/55.jpg',
-    },
-    {
-        id: 'db7',
-        name: 'Nneka Abiola',
-        matricNo: '180404016',
-        email: 'nneka.abiola@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/women/61.jpg',
-    },
-    {
-        id: 'db8',
-        name: 'Kelechi Okafor',
-        matricNo: '180404017',
-        email: 'kelechi.okafor@student.edu.ng',
-        avatar: 'https://randomuser.me/api/portraits/men/62.jpg',
-    },
-];
-
 interface StudentResult {
-    id: string;
+    id: number;
     name: string;
     matricNo: string;
     email: string;
-    avatar: string;
+}
+
+function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 export interface AddStudentBottomSheetRef {
@@ -104,7 +50,7 @@ export interface AddStudentBottomSheetRef {
 
 interface AddStudentBottomSheetProps {
     classCode: string;
-    onAddStudent: (student: { id: string; name: string; matricNo: string; email: string }) => void;
+    onAddStudent: (student: { id: number; name: string; matricNo: string; email: string }) => void;
 }
 
 export const AddStudentBottomSheet = forwardRef<AddStudentBottomSheetRef, AddStudentBottomSheetProps>(
@@ -117,6 +63,8 @@ export const AddStudentBottomSheet = forwardRef<AddStudentBottomSheetRef, AddStu
         const [isSearching, setIsSearching] = useState(false);
         const [selectedStudent, setSelectedStudent] = useState<StudentResult | null>(null);
         const [showConfirmation, setShowConfirmation] = useState(false);
+        const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+        const searchSeq = useRef(0);
 
         const snapPoints = useMemo(() => ['60%', '85%'], []);
 
@@ -131,28 +79,41 @@ export const AddStudentBottomSheet = forwardRef<AddStudentBottomSheetRef, AddStu
             close: () => bottomSheetRef.current?.dismiss(),
         }));
 
+        // Debounced lookup against the real student directory. Searching by
+        // email, matric number, or name all hit the same endpoint.
         const handleSearch = useCallback((query: string) => {
             setSearchQuery(query);
 
-            if (query.length < 2) {
+            if (searchTimer.current) clearTimeout(searchTimer.current);
+
+            const trimmed = query.trim();
+            if (trimmed.length < 2) {
                 setSearchResults([]);
+                setIsSearching(false);
                 return;
             }
 
             setIsSearching(true);
+            const seq = ++searchSeq.current;
 
-            // Simulate API search delay
-            setTimeout(() => {
-                const q = query.toLowerCase();
-                const results = STUDENT_DATABASE.filter(
-                    (s) =>
-                        s.matricNo.toLowerCase().includes(q) ||
-                        s.email.toLowerCase().includes(q) ||
-                        s.name.toLowerCase().includes(q)
-                );
-                setSearchResults(results);
-                setIsSearching(false);
-            }, 300);
+            searchTimer.current = setTimeout(async () => {
+                try {
+                    const { data } = await courseApi.searchStudents(trimmed);
+                    if (seq !== searchSeq.current) return; // a newer search won
+                    setSearchResults(
+                        (data.students ?? []).map((s) => ({
+                            id: s.id,
+                            name: s.name,
+                            email: s.email,
+                            matricNo: s.matric_no ?? '',
+                        })),
+                    );
+                } catch {
+                    if (seq === searchSeq.current) setSearchResults([]);
+                } finally {
+                    if (seq === searchSeq.current) setIsSearching(false);
+                }
+            }, 350);
         }, []);
 
         const handleStudentSelect = (student: StudentResult) => {
@@ -260,17 +221,17 @@ export const AddStudentBottomSheet = forwardRef<AddStudentBottomSheetRef, AddStu
                                             onPress={() => handleStudentSelect(student)}
                                             className="flex-row items-center p-3 rounded-[14px] bg-white mb-2 border border-[#E8EAF1] active:bg-[#F5F6FA]"
                                         >
-                                            <Image
-                                                source={{ uri: student.avatar }}
-                                                className="h-11 w-11 rounded-full"
-                                                resizeMode="cover"
-                                            />
+                                            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#EDE9FC]">
+                                                <Text className="font-heading text-[14px] text-[#6343cc]">
+                                                    {getInitials(student.name)}
+                                                </Text>
+                                            </View>
                                             <View className="ml-3 flex-1">
                                                 <Text className="font-medium text-[15px] text-[#181A20]">
                                                     {student.name}
                                                 </Text>
                                                 <Text className="text-[12px] text-[#8F94A4] mt-0.5">
-                                                    {student.matricNo} • {student.email}
+                                                    {student.matricNo ? `${student.matricNo} • ` : ''}{student.email}
                                                 </Text>
                                             </View>
                                             <Ionicons name="add-circle" size={24} color={PRIMARY_COLOR} />
@@ -321,16 +282,16 @@ export const AddStudentBottomSheet = forwardRef<AddStudentBottomSheetRef, AddStu
                             <View className="items-center mb-6">
                                 {selectedStudent && (
                                     <>
-                                        <Image
-                                            source={{ uri: selectedStudent.avatar }}
-                                            className="h-20 w-20 rounded-full mb-4"
-                                            resizeMode="cover"
-                                        />
+                                        <View className="h-20 w-20 items-center justify-center rounded-full bg-[#EDE9FC] mb-4">
+                                            <Text className="font-heading text-[24px] text-[#6343cc]">
+                                                {getInitials(selectedStudent.name)}
+                                            </Text>
+                                        </View>
                                         <Text className="font-heading text-[18px] text-[#181A20] text-center">
                                             {selectedStudent.name}
                                         </Text>
                                         <Text className="text-[13px] text-[#8F94A4] mt-1">
-                                            {selectedStudent.matricNo}
+                                            {selectedStudent.matricNo || selectedStudent.email}
                                         </Text>
                                     </>
                                 )}

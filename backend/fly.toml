@@ -13,6 +13,11 @@ primary_region = "jnb"
   DB_CONNECTION = "sqlite"
   DB_DATABASE = "/data/database.sqlite"
 
+  # Simulation mode — honours the app's hidden "Simulation mode" toggle so
+  # demo check-ins auto-verify face and device binding never blocks. Set to
+  # "false" to enforce real verification.
+  GEOTRACK_DEMO_MODE = "true"
+
   SESSION_DRIVER = "database"
   QUEUE_CONNECTION = "database"
   CACHE_STORE = "database"

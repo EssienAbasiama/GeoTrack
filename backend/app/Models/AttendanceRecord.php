@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AttendanceRecord extends Model
 {
@@ -27,6 +28,9 @@ class AttendanceRecord extends Model
         'face_image_path',
         'present_throughout',
         'missed_checks',
+        're_entry_count',
+        'minutes_present',
+        'last_entry_at',
     ];
 
     protected $casts = [
@@ -41,7 +45,37 @@ class AttendanceRecord extends Model
         'face_confidence' => 'float',
         'present_throughout' => 'boolean',
         'missed_checks' => 'integer',
+        're_entry_count' => 'integer',
+        'minutes_present' => 'integer',
+        'last_entry_at' => 'datetime',
     ];
+
+    /**
+     * Minutes actually spent inside the class: completed stints plus the one in
+     * progress. `$until` caps an open stint at the session's end time so a
+     * student who never clocked out isn't credited past the end of the class.
+     */
+    public function minutesPresent(?\DateTimeInterface $until = null): int
+    {
+        $total = (int) $this->minutes_present;
+
+        if (!$this->checked_out_at && $this->last_entry_at) {
+            $end = $until ? \Illuminate\Support\Carbon::instance($until) : now();
+            if ($end->greaterThan(now())) {
+                $end = now();
+            }
+            if ($end->greaterThan($this->last_entry_at)) {
+                $total += (int) round($this->last_entry_at->diffInMinutes($end));
+            }
+        }
+
+        return $total;
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(AttendanceEvent::class);
+    }
 
     public function session(): BelongsTo
     {

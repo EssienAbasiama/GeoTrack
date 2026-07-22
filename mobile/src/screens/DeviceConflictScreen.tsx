@@ -73,9 +73,10 @@ export function DeviceConflictScreen({ route, navigation }: Props) {
                         <View className="flex-row items-start">
                             <Ionicons name="information-circle" size={20} color={PRIMARY} />
                             <Text className="ml-3 flex-1 text-[12px] text-[#5A5D6B] leading-[18px]">
-                                GeoTrack ties each account to a single device to prevent
-                                proxy check-ins. To use a new device, your administrator must
-                                reset the previous binding.
+                                GeoTrack ties each account to one device to prevent proxy
+                                check-ins. You can move your account to this phone below —
+                                the old device will be unlinked, and the change is recorded
+                                in your attendance log for your lecturer to see.
                             </Text>
                         </View>
                     </View>
@@ -91,7 +92,7 @@ export function DeviceConflictScreen({ route, navigation }: Props) {
                             <ActivityIndicator color="#FFFFFF" />
                         ) : (
                             <Text className="font-medium text-[15px] text-white">
-                                Reset my device
+                                Use this device instead
                             </Text>
                         )}
                     </Pressable>

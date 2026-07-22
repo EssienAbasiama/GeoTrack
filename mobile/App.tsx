@@ -90,6 +90,16 @@ export default function App() {
                     courseName: (data?.courseName as string) ?? (data?.course_name as string) ?? '',
                     expiresAt: (data?.expiresAt as string) ?? (data?.expires_at as string),
                 });
+                return;
+            }
+
+            // Lecturer just opened attendance — jump straight into check-in.
+            if (data?.type === 'attendance_opened' && data?.course_id && navigationRef.isReady()) {
+                navigationRef.navigate('CheckIn', {
+                    courseId: String(data.course_id),
+                    classCode: (data?.courseCode as string) ?? '',
+                    className: (data?.courseName as string) ?? '',
+                });
             }
         });
 

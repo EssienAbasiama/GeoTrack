@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Device;
+use App\Models\DeviceBindingEvent;
 use App\Models\PushToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,26 @@ class DeviceController extends Controller
                     ->whereNull('revoked_at')
                     ->first();
 
+                // In demo/simulation mode, never block a new phone: revoke the
+                // old binding and bind this one instead of returning a conflict.
+                // This is what lets every student bind during a simulation.
+                if ($existing && $existing->device_uid !== $validated['device_uid'] && config('geotrack.demo_mode')) {
+                    DeviceBindingEvent::record(
+                        $user->id,
+                        'rebound',
+                        $existing->device_uid,
+                        $validated['device_uid'],
+                        trim(($validated['brand'] ?? '') . ' ' . ($validated['model'] ?? '')) ?: null,
+                        'simulation_mode',
+                    );
+
+                    Device::query()
+                        ->where('user_id', $user->id)
+                        ->whereNull('revoked_at')
+                        ->update(['revoked_at' => now()]);
+                    $existing = null;
+                }
+
                 if ($existing && $existing->device_uid !== $validated['device_uid']) {
                     return ['conflict' => true];
                 }
@@ -59,6 +80,14 @@ class DeviceController extends Controller
                     ->where('user_id', $user->id)
                     ->whereNull('revoked_at')
                     ->update(['revoked_at' => now()]);
+
+                DeviceBindingEvent::record(
+                    $user->id,
+                    'bound',
+                    null,
+                    $validated['device_uid'],
+                    trim(($validated['brand'] ?? '') . ' ' . ($validated['model'] ?? '')) ?: null,
+                );
 
                 return Device::query()->create([
                     'user_id' => $user->id,
@@ -117,6 +146,14 @@ class DeviceController extends Controller
 
         foreach ($active as $device) {
             $device->update(['revoked_at' => now()]);
+            DeviceBindingEvent::record(
+                $user->id,
+                'reset',
+                $device->device_uid,
+                null,
+                trim(($device->brand ?? '') . ' ' . ($device->model ?? '')) ?: null,
+                'self_service',
+            );
             Log::info('GeoTrack: device self-reset', [
                 'user_id' => $user->id,
                 'device_id' => $device->id,

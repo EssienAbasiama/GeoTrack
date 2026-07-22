@@ -23,6 +23,7 @@ import type {
     ApiPushTokenResponse,
     ApiClassInvite,
     ApiStudentAttendance,
+    ApiStudentSearchResult,
 } from '../types/api';
 
 // ─── Navigation ref (register in App.tsx: <NavigationContainer ref={navigationRef}>) ───
@@ -492,8 +493,14 @@ export const courseApi = {
 
     enroll: (
         courseId: number | string,
-        body: { user_id?: number; matric_no?: string },
+        body: { user_id?: number; matric_no?: string; email?: string },
     ) => apiClient.post<{ message: string }>(`/courses/${courseId}/enroll`, body),
+
+    /** Find students to enrol by email, matric number, or name. */
+    searchStudents: (q: string) =>
+        unwrap<{ students: ApiStudentSearchResult[] }>(
+            apiClient.get('/students/search', { params: { q } } as InternalAxiosRequestConfig),
+        ),
 
     selfEnroll: (courseId: number | string) =>
         apiClient.post<{ message: string }>(`/courses/${courseId}/self-enroll`, {}),
@@ -510,6 +517,24 @@ export const courseApi = {
         unwrap<ApiStudentAttendance>(
             apiClient.get(`/courses/${courseId}/students/${userId}/attendance`),
         ),
+
+    /** Today's register for the class as raw CSV (present/absent + score). */
+    todayAttendanceCsv: (courseId: number | string) =>
+        apiClient
+            .get<string>(`/courses/${courseId}/attendance/today/csv`, {
+                responseType: 'text',
+                transformResponse: (data) => data,
+            })
+            .then((res) => res.data),
+
+    /** One student's full attendance history for the course, as raw CSV. */
+    studentAttendanceCsv: (courseId: number | string, userId: number | string) =>
+        apiClient
+            .get<string>(`/courses/${courseId}/students/${userId}/attendance/csv`, {
+                responseType: 'text',
+                transformResponse: (data) => data,
+            })
+            .then((res) => res.data),
 };
 
 // ─── Class invite API ────────────────────────────────────────────────────────
@@ -611,6 +636,7 @@ export const attendanceApi = {
             longitude: number;
             accuracy?: number;
             face_image_base64?: string;
+            demo_bypass?: boolean;
         },
     ) =>
         unwrap<{ record: ApiAttendanceRecord }>(

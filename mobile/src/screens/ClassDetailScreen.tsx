@@ -4,7 +4,7 @@ import { ActivityIndicator, Animated, Easing, FlatList, Modal, Pressable, Share,
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { useRole } from '../store/RoleContext';
@@ -20,6 +20,7 @@ import { celebrationPattern } from '../utils/haptics';
 import { notifyCheckInSuccess } from '../services/notifications';
 import { courseApi, geofenceApi, sessionApi, inviteApi } from '../services/apiClient';
 import { formatTimeRange } from '../utils/time';
+import { shareCsv } from '../utils/downloadCsv';
 import type { ApiCourseStudent } from '../types/api';
 
 const PRIMARY_COLOR = '#6343cc';
@@ -205,6 +206,8 @@ export function ClassDetailScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [hasCheckedIn, setHasCheckedIn] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+    const [togglingAttendance, setTogglingAttendance] = useState(false);
+    const [downloadingCsv, setDownloadingCsv] = useState(false);
     // Most recent session (active or closed) so a lecturer can open it to view
     // the day's attendance and download the CSV after class.
     const [latestSessionId, setLatestSessionId] = useState<number | null>(null);
@@ -286,9 +289,9 @@ export function ClassDetailScreen() {
                     });
                 }
 
-                if (sessionRes?.data?.session) {
-                    setActiveSessionId(sessionRes.data.session.id);
-                }
+                // Set null when there's no session, otherwise a stale id lingers
+                // and the attendance toggle acts on state that no longer exists.
+                setActiveSessionId(sessionRes?.data?.session?.id ?? null);
 
                 // Sessions come back ordered newest-first; keep the latest one so
                 // the lecturer can reopen it to view/download attendance.
@@ -306,6 +309,22 @@ export function ClassDetailScreen() {
         })();
         return () => { mounted = false; };
     }, [classId, venue]);
+
+    // Re-check the live session every time the screen regains focus. Without
+    // this the id was only read on mount, so after starting a session and
+    // navigating back the toggle was acting on stale state.
+    useFocusEffect(
+        useCallback(() => {
+            let mounted = true;
+            sessionApi
+                .active(classId)
+                .then(({ data }) => {
+                    if (mounted) setActiveSessionId(data.session?.id ?? null);
+                })
+                .catch(() => { /* keep last known state */ });
+            return () => { mounted = false; };
+        }, [classId]),
+    );
 
     // Determine if class is currently active based on schedule
     const isClassActive = useMemo(() => {
@@ -334,7 +353,12 @@ export function ClassDetailScreen() {
         return currentMinutes >= (startMinutes - 15) && currentMinutes <= endMinutes;
     }, [classInfo.day, classInfo.startTime, classInfo.endTime]);
 
-    const isAttendanceOpen = isAttendanceEnabled(classCode);
+    // Attendance is open if and only if the SERVER has an active session.
+    // This used to read local-only context state, which drifted out of sync:
+    // the button still looked "off" after a session had started, so a second
+    // tap took the close branch and silently ended the session that the first
+    // tap had just opened.
+    const isAttendanceOpen = activeSessionId != null;
     // A student can check in whenever an attendance session is active for the
     // class (sessions auto-open during the scheduled window). The lecturer-side
     // `isAttendanceOpen` toggle only drives the lecturer's own controls.
@@ -369,13 +393,21 @@ export function ClassDetailScreen() {
             handleOpenDirections();
             return;
         }
-        // Toggle in-app shortcut state and start/end the backend session.
-        if (activeSessionId) {
-            await handleEndSession();
-            setAttendanceEnabled(classCode, false);
-        } else {
-            await handleStartSession();
-            setAttendanceEnabled(classCode, true);
+        // Ignore taps while a start/close is in flight — an impatient second tap
+        // used to close the session the first tap had just opened.
+        if (togglingAttendance) return;
+
+        setTogglingAttendance(true);
+        try {
+            if (activeSessionId) {
+                await handleEndSession();
+                setAttendanceEnabled(classCode, false);
+            } else {
+                await handleStartSession();
+                setAttendanceEnabled(classCode, true);
+            }
+        } finally {
+            setTogglingAttendance(false);
         }
     };
 
@@ -486,22 +518,26 @@ export function ClassDetailScreen() {
         }
     }, [isHOC]);
 
-    const handleAddStudent = async (student: { id: string; name: string; matricNo: string; email: string }) => {
-        if (students.some((s) => s.id === student.id)) return;
+    const handleAddStudent = async (student: { id: number; name: string; matricNo: string; email: string }) => {
+        const studentId = String(student.id);
+        if (students.some((s) => s.id === studentId)) return;
 
         const newStudent: Student = {
             ...student,
+            id: studentId,
             avatar: null,
             attendanceRate: 0,
         };
         setStudents((prev) => [...prev, newStudent]);
 
         try {
-            await courseApi.enroll(classId, {
-                matric_no: student.matricNo,
-            });
+            // Enrol by id — the search already resolved the exact student, so this
+            // works whether the lecturer looked them up by email, matric or name.
+            await courseApi.enroll(classId, { user_id: student.id });
             Toast.show({ type: 'success', text1: `${student.name} enrolled.`, position: 'bottom' });
         } catch (err) {
+            // Roll the optimistic row back so the list matches the server.
+            setStudents((prev) => prev.filter((s) => s.id !== studentId));
             const msg = (err as any)?.response?.data?.message ?? 'Could not enroll student.';
             Toast.show({ type: 'error', text1: msg, position: 'bottom' });
         }
@@ -636,6 +672,27 @@ export function ClassDetailScreen() {
             Toast.show({ type: 'error', text1: msg, position: 'bottom' });
         } finally {
             setDeleting(false);
+        }
+    };
+
+    const handleDownloadTodayAttendance = async () => {
+        if (downloadingCsv) return;
+        setDownloadingCsv(true);
+        try {
+            const csv = await courseApi.todayAttendanceCsv(classId);
+            const date = new Date().toISOString().slice(0, 10);
+            await shareCsv(
+                csv,
+                `${classInfo.code}_${date}_attendance.csv`,
+                `${classInfo.code} attendance`,
+            );
+            setMenuVisible(false);
+        } catch (err) {
+            const msg =
+                (err as any)?.response?.data?.message ?? 'Could not download attendance.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        } finally {
+            setDownloadingCsv(false);
         }
     };
 
@@ -1236,6 +1293,31 @@ export function ClassDetailScreen() {
                             <View className="h-1 w-10 rounded-full bg-[#E2E0E8]" />
                         </View>
                         <Text className="font-heading text-[16px] text-[#181A20] mb-2">Manage Class</Text>
+
+                        {canEditClass && (
+                            <Pressable
+                                onPress={handleDownloadTodayAttendance}
+                                disabled={downloadingCsv}
+                                className="flex-row items-center py-4 border-b border-[#F1F2F6] active:opacity-70"
+                            >
+                                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#FFF3E0] mr-3">
+                                    {downloadingCsv ? (
+                                        <ActivityIndicator size="small" color="#FF9800" />
+                                    ) : (
+                                        <Ionicons name="download-outline" size={20} color="#FF9800" />
+                                    )}
+                                </View>
+                                <View className="flex-1">
+                                    <Text className="font-medium text-[15px] text-[#181A20]">
+                                        Download Today&apos;s Attendance
+                                    </Text>
+                                    <Text className="text-[12px] text-[#8F94A4] mt-0.5">
+                                        CSV: present/absent, score and grade
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                            </Pressable>
+                        )}
 
                         {canShareStudents && (
                             <Pressable

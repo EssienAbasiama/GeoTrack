@@ -371,7 +371,9 @@ export function LecturersScreen() {
         }
     };
 
-    const source = lecturers.length === 0 && loadError ? MOCK_LECTURERS : lecturers;
+    // Always show real data — never fall back to MOCK_LECTURERS, which would
+    // display invented staff that don't exist on the server.
+    const source = lecturers;
     const totalLecturers = source.length;
     const assignedLecturers = source.filter((l) => l.classes.length > 0).length;
 

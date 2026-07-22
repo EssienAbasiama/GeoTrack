@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\AttendanceReportController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\CourseInviteController;
@@ -82,8 +83,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/courses/{course}/enroll', [CourseController::class, 'enroll']);
         Route::post('/courses/{course}/self-enroll', [CourseController::class, 'selfEnroll']);
         Route::delete('/courses/{course}/enroll/{userId}', [CourseController::class, 'unenroll']);
+        // Student lookup for enrolment (lecturer/admin) — by email, matric or name.
+        Route::get('/students/search', [CourseController::class, 'searchStudents']);
+
         Route::get('/courses/{course}/students', [CourseController::class, 'students']);
         Route::get('/courses/{course}/students/{userId}/attendance', [CourseController::class, 'studentAttendance']);
+
+        // Lecturer attendance exports (CSV with present/absent + integrity score)
+        Route::get('/courses/{course}/attendance/today/csv', [AttendanceReportController::class, 'todayCsv']);
+        Route::get('/courses/{course}/students/{userId}/attendance/csv', [AttendanceReportController::class, 'studentCsv']);
 
         // Class invites / share links
         Route::post('/courses/{course}/invites', [CourseInviteController::class, 'store']);
@@ -103,7 +111,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/sessions/{session}', [SessionController::class, 'show']);
         Route::post('/sessions/{session}/close', [SessionController::class, 'close']);
         Route::get('/sessions/{session}/records', [SessionController::class, 'records']);
-        Route::get('/sessions/{session}/records/csv', [SessionController::class, 'exportCsv']);
+        Route::get('/sessions/{session}/records/csv', [AttendanceReportController::class, 'sessionCsv']);
 
         // Attendance
         Route::post('/sessions/{session}/checkin', [AttendanceController::class, 'checkIn']);

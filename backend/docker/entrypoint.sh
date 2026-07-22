@@ -14,6 +14,19 @@ chown -R www-data:www-data /data 2>/dev/null || true
 
 cd /var/www/html
 
+# One-time import of the local seed snapshot onto the live volume.
+# Backs up the current DB, swaps in the snapshot, then clears the seed markers
+# so the seeders below RE-RUN — this restores the EEE classes (absent from the
+# local snapshot) on top of the imported data. Guarded so it happens once.
+if [ ! -f /data/.snapshot-v1 ] && [ -f /var/www/html/database/snapshot.sqlite ]; then
+  echo "Importing local seed snapshot (first run)..."
+  cp /data/database.sqlite /data/database.pre-snapshot.sqlite 2>/dev/null || true
+  cp /var/www/html/database/snapshot.sqlite /data/database.sqlite
+  chown www-data:www-data /data/database.sqlite
+  rm -f /data/.seeded /data/.seeded-eee
+  touch /data/.snapshot-v1
+fi
+
 # Apply migrations against the SQLite file on the volume.
 su-exec www-data php artisan migrate --force
 

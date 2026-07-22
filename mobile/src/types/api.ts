@@ -95,18 +95,41 @@ export interface ApiCourseStudent {
     attendance_rate?: number | null;
 }
 
+/** Result row from GET /students/search (lecturer enrolling a student). */
+export interface ApiStudentSearchResult {
+    id: number;
+    name: string;
+    email: string;
+    matric_no?: string | null;
+}
+
 // ─── Student attendance (per-course history) ───────────────────────────────────
 export interface ApiStudentAttendanceRow {
     id: string;
     date: string | null;
     day: string | null;
     check_in_time: string | null;
+    check_out_time: string | null;
     duration_minutes: number;
     expected_minutes: number;
     status: 'present' | 'late' | 'absent' | 'excused';
     was_on_time: boolean;
     location_verified: boolean;
     face_verified: boolean;
+    /** Times the student clocked out and came back during the class. */
+    re_entries: number;
+    /** Clocked in and hasn't clocked out yet. */
+    still_in_class: boolean;
+    events: ApiAttendanceEvent[];
+}
+
+/** One entry or exit inside a class. */
+export interface ApiAttendanceEvent {
+    type: 'check_in' | 're_entry' | 'check_out';
+    label: string;
+    time?: string | null;
+    occurred_at?: string | null;
+    within_geofence: boolean;
 }
 
 export interface ApiStudentAttendance {
@@ -170,6 +193,10 @@ export interface ApiAttendanceRecord {
     };
     checked_in_at: string;
     checked_out_at?: string | null;
+    re_entry_count?: number;
+    minutes_present?: number;
+    still_in_class?: boolean;
+    events?: ApiAttendanceEvent[];
     latitude?: number | null;
     longitude?: number | null;
     accuracy_m?: number | null;

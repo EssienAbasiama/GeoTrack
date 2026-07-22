@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceRecord;
 use App\Models\AttendanceSession;
 use App\Models\Course;
 use App\Models\CourseEnrollment;
+use App\Services\PushService;
 use App\Services\ScheduledSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,8 +17,10 @@ use Throwable;
 
 class SessionController extends Controller
 {
-    public function __construct(private readonly ScheduledSessionService $scheduledSessions)
-    {
+    public function __construct(
+        private readonly ScheduledSessionService $scheduledSessions,
+        private readonly PushService $push,
+    ) {
     }
 
     public function store(Request $request, Course $course): JsonResponse
@@ -77,6 +81,30 @@ class SessionController extends Controller
             return response()->json([
                 'message' => 'Unable to start session right now. Please try again.',
             ], 500);
+        }
+
+        // Tell every enrolled student that attendance is now open. Best-effort:
+        // a push failure must never stop the lecturer starting the session.
+        try {
+            $studentIds = CourseEnrollment::query()
+                ->where('course_id', $course->id)
+                ->pluck('user_id')
+                ->all();
+
+            $this->push->sendToUsers(
+                $studentIds,
+                'Attendance is open',
+                sprintf('%s — %s. Tap to check in now.', $course->code, $course->title),
+                [
+                    'type' => 'attendance_opened',
+                    'session_id' => $session->id,
+                    'course_id' => $course->id,
+                    'courseCode' => $course->code,
+                    'courseName' => $course->title,
+                ],
+            );
+        } catch (Throwable $e) {
+            report($e);
         }
 
         return response()->json([
@@ -202,66 +230,6 @@ class SessionController extends Controller
         ]);
     }
 
-    /**
-     * Export the day's attendance for a session as a downloadable CSV file.
-     * Lists each student with their check-in and check-out times.
-     */
-    public function exportCsv(Request $request, AttendanceSession $session)
-    {
-        $user = $request->user();
-        $course = $session->course;
-        if (!$user->isAdmin() && $course->lecturer_id !== $user->id) {
-            return response()->json([
-                'message' => 'You are not authorised to export records for this session.',
-            ], 403);
-        }
-
-        $records = $session->records()
-            ->with('user:id,name,matric_no,email')
-            ->orderBy('checked_in_at')
-            ->get();
-
-        $columns = [
-            'S/N', 'Matric No', 'Name', 'Email', 'Status',
-            'Checked In', 'Checked Out', 'Within Geofence',
-            'Face Verified', 'Present Throughout', 'Distance (m)',
-        ];
-
-        $fmt = static fn ($dt): string => $dt ? $dt->format('Y-m-d H:i:s') : '';
-
-        $callback = function () use ($records, $columns, $fmt): void {
-            $out = fopen('php://output', 'w');
-            // UTF-8 BOM so Excel renders accents/symbols correctly.
-            fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, $columns);
-            $i = 1;
-            foreach ($records as $r) {
-                fputcsv($out, [
-                    $i++,
-                    $r->user->matric_no ?? '',
-                    $r->user->name ?? '',
-                    $r->user->email ?? '',
-                    ucfirst((string) $r->status),
-                    $fmt($r->checked_in_at),
-                    $fmt($r->checked_out_at),
-                    $r->within_geofence ? 'Yes' : 'No',
-                    $r->face_verified ? 'Yes' : 'No',
-                    $r->present_throughout ? 'Yes' : 'No',
-                    $r->distance_from_center_m !== null ? round((float) $r->distance_from_center_m, 1) : '',
-                ]);
-            }
-            fclose($out);
-        };
-
-        $code = $course->code ?? 'class';
-        $date = optional($session->starts_at)->format('Y-m-d') ?? now()->format('Y-m-d');
-        $filename = preg_replace('/[^A-Za-z0-9_\-.]/', '_', "{$code}_{$date}_attendance.csv");
-
-        return response()->streamDownload($callback, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
-    }
-
     public function records(Request $request, AttendanceSession $session): JsonResponse
     {
         $user = $request->user();
@@ -275,7 +243,22 @@ class SessionController extends Controller
         $records = $session->records()
             ->with('user:id,name,matric_no,email')
             ->orderBy('checked_in_at')
-            ->get();
+            ->get()
+            ->map(function (AttendanceRecord $record) {
+                $data = $record->toArray();
+                // The app reads `student` — expose it under that name rather
+                // than falling back to "User #4".
+                $data['student'] = $record->user ? [
+                    'id' => $record->user->id,
+                    'name' => $record->user->name,
+                    'matric_no' => $record->user->matric_no,
+                    'email' => $record->user->email,
+                ] : null;
+                $data['minutes_present'] = $record->minutesPresent($record->session?->ends_at);
+                $data['still_in_class'] = !$record->checked_out_at && (bool) $record->last_entry_at;
+                return $data;
+            })
+            ->values();
 
         return response()->json([
             'message' => 'Session records retrieved.',

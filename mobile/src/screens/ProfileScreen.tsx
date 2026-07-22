@@ -10,6 +10,7 @@ import { EditProfileBottomSheet, type EditProfileBottomSheetRef } from '../compo
 import { useRole, ROLE_LABELS, ROLE_DESCRIPTIONS, UserRole } from '../store/RoleContext';
 import { useAuth } from '../store/AuthContext';
 import { deviceApi, faceApi } from '../services/apiClient';
+import { getDemoMode, setDemoMode } from '../utils/demoMode';
 import { requestNotificationPermissions, registerPushTokenWithBackend } from '../services/notifications';
 import type { ApiDevice, ApiFaceProfile } from '../types/api';
 import type { RootStackParamList } from '../types/navigation';
@@ -104,6 +105,36 @@ export function ProfileScreen() {
     const [device, setDevice] = useState<ApiDevice | null>(null);
     const [faceProfile, setFaceProfile] = useState<ApiFaceProfile | null>(null);
 
+    // Hidden "Simulation mode" toggle — revealed by tapping the title 7 times.
+    const [demoEnabled, setDemoEnabled] = useState(false);
+    const [demoVisible, setDemoVisible] = useState(false);
+    const demoTapCount = useRef(0);
+
+    useEffect(() => {
+        getDemoMode().then((on) => {
+            setDemoEnabled(on);
+            if (on) setDemoVisible(true); // stay visible so it can be turned off
+        });
+    }, []);
+
+    const handleTitleTap = () => {
+        demoTapCount.current += 1;
+        if (demoTapCount.current >= 7 && !demoVisible) {
+            setDemoVisible(true);
+            Toast.show({ type: 'success', text1: 'Simulation mode unlocked', position: 'bottom' });
+        }
+    };
+
+    const handleToggleDemo = async (value: boolean) => {
+        setDemoEnabled(value);
+        await setDemoMode(value);
+        Toast.show({
+            type: value ? 'success' : 'info',
+            text1: value ? 'Simulation mode ON — check-ins auto-verify' : 'Simulation mode OFF',
+            position: 'bottom',
+        });
+    };
+
     useFocusEffect(
         useCallback(() => {
             if (!isStudent) return;
@@ -185,7 +216,9 @@ export function ProfileScreen() {
                     <Pressable onPress={() => navigation.goBack()} className="h-9 w-9 items-center justify-center rounded-full bg-white">
                         <Ionicons name="chevron-back" size={20} color="#232736" />
                     </Pressable>
-                    <Text className="font-heading text-[22px] text-[#181A20]">Profile</Text>
+                    <Pressable onPress={handleTitleTap}>
+                        <Text className="font-heading text-[22px] text-[#181A20]">Profile</Text>
+                    </Pressable>
                     <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-white">
                         <Ionicons name="ellipsis-vertical" size={20} color="#232736" />
                     </Pressable>
@@ -363,6 +396,29 @@ export function ProfileScreen() {
                         thumbColor="#FFFFFF"
                     />
                 </View>
+
+                {demoVisible && (
+                    <>
+                        <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Simulation</Text>
+                        <View className="mb-5 flex-row items-center justify-between rounded-[16px] border border-[#E8EAF1] px-3 py-3">
+                            <View className="mr-2 flex-1 flex-row items-center">
+                                <Ionicons name="flask-outline" size={18} color="#A8ADBB" />
+                                <View className="ml-3 flex-1">
+                                    <Text className="font-medium text-[15px] text-[#232736]">Simulation mode</Text>
+                                    <Text className="mt-1 text-[12px] text-[#8F94A4]">
+                                        Auto-verify face at check-in for demos
+                                    </Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={demoEnabled}
+                                onValueChange={handleToggleDemo}
+                                trackColor={{ false: '#D6D9E3', true: PRIMARY_COLOR }}
+                                thumbColor="#FFFFFF"
+                            />
+                        </View>
+                    </>
+                )}
 
                 <Text className="mb-3 font-heading text-[16px] text-[#1F2230]">Support</Text>
 

@@ -36,6 +36,14 @@ class ScheduledSessionService
      */
     public function ensureForCourse(Course $course): ?AttendanceSession
     {
+        // Attendance is lecturer-controlled: a session must be explicitly started
+        // by the lecturer. Opening one off the timetable would let students mark
+        // attendance with no lecturer involvement, so this is disabled unless
+        // GEOTRACK_AUTO_OPEN_SESSIONS is turned on.
+        if (!config('geotrack.auto_open_scheduled_sessions')) {
+            return null;
+        }
+
         if (!$course->day || !$course->start_time || !$course->end_time || !$course->geofence) {
             return null;
         }

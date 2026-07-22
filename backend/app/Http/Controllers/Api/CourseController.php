@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceEvent;
 use App\Models\AttendanceRecord;
 use App\Models\AttendanceSession;
 use App\Models\Course;
@@ -222,17 +223,25 @@ class CourseController extends Controller
         $validated = $request->validate([
             'matric_no' => ['nullable', 'string', 'max:64'],
             'user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'email' => ['nullable', 'string', 'email', 'max:255'],
         ]);
 
-        if (empty($validated['matric_no']) && empty($validated['user_id'])) {
+        if (empty($validated['matric_no']) && empty($validated['user_id']) && empty($validated['email'])) {
             return response()->json([
-                'message' => 'Provide either matric_no or user_id.',
+                'message' => 'Provide a user_id, matric_no or email.',
             ], 422);
         }
 
-        $student = !empty($validated['user_id'])
-            ? User::query()->find($validated['user_id'])
-            : User::query()->where('matric_no', $validated['matric_no'])->first();
+        // Resolve the student by id, matric number, or email (case-insensitive).
+        if (!empty($validated['user_id'])) {
+            $student = User::query()->find($validated['user_id']);
+        } elseif (!empty($validated['matric_no'])) {
+            $student = User::query()->where('matric_no', $validated['matric_no'])->first();
+        } else {
+            $student = User::query()
+                ->whereRaw('LOWER(email) = ?', [mb_strtolower(trim($validated['email']))])
+                ->first();
+        }
 
         if (!$student) {
             return response()->json([
@@ -259,6 +268,50 @@ class CourseController extends Controller
                 'matric_no' => $student->matric_no,
             ]],
         ], 201);
+    }
+
+    /**
+     * Search students so a lecturer can find someone to enroll.
+     *
+     * Matches on email, matric number, or name (case-insensitive, partial).
+     * Scoped to the caller's institution; superadmins search across all.
+     */
+    public function searchStudents(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user->isAdmin() && !$user->isLecturer()) {
+            return response()->json([
+                'message' => 'You are not authorised to search students.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'q' => ['required', 'string', 'min:2', 'max:128'],
+        ]);
+
+        $like = '%' . mb_strtolower(trim($validated['q'])) . '%';
+
+        $query = User::query()
+            ->where('role', 'student')
+            ->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(email) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(matric_no) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(name) LIKE ?', [$like]);
+            });
+
+        if (!$user->isSuperAdmin() && $user->institution_id) {
+            $query->where('institution_id', $user->institution_id);
+        }
+
+        $students = $query
+            ->orderBy('name')
+            ->limit(20)
+            ->get(['id', 'name', 'email', 'matric_no']);
+
+        return response()->json([
+            'message' => 'Students retrieved.',
+            'data' => ['students' => $students],
+        ]);
     }
 
     public function selfEnroll(Request $request, Course $course): JsonResponse
@@ -326,7 +379,16 @@ class CourseController extends Controller
             ->get()
             ->keyBy('session_id');
 
-        $rows = $sessions->map(function (AttendanceSession $s) use ($records) {
+        // Every entry/exit for this student, so the history can show the full
+        // in-and-out trail rather than just the current state.
+        $eventsBySession = AttendanceEvent::query()
+            ->where('user_id', $userId)
+            ->whereIn('session_id', $sessions->pluck('id'))
+            ->orderBy('occurred_at')
+            ->get()
+            ->groupBy('session_id');
+
+        $rows = $sessions->map(function (AttendanceSession $s) use ($records, $eventsBySession) {
             $record = $records->get($s->id);
             $expected = ($s->starts_at && $s->ends_at)
                 ? (int) round($s->starts_at->diffInMinutes($s->ends_at))
@@ -334,26 +396,41 @@ class CourseController extends Controller
 
             $status = $record?->status ?? 'absent';
             $checkIn = $record?->checked_in_at ?? null;
+            $checkOut = $record?->checked_out_at ?? null;
 
-            // Duration = from check-in to scheduled end (we record check-in only),
-            // clamped to the scheduled length. 0 when absent/excused.
+            // Real time inside the class, summed across every stint. Falls back
+            // to check-in → scheduled end for records made before event logging.
             $duration = 0;
-            if ($record && in_array($status, ['present', 'late'], true) && $checkIn && $s->ends_at) {
-                $duration = (int) round($checkIn->diffInMinutes($s->ends_at, false));
-                $duration = max(0, min($expected, $duration));
+            if ($record && in_array($status, ['present', 'late'], true) && $checkIn) {
+                $duration = $record->minutesPresent($s->ends_at);
+                if ($duration === 0 && !$record->last_entry_at && !$checkOut && $s->ends_at) {
+                    $duration = (int) round($checkIn->diffInMinutes($s->ends_at, false));
+                }
+                $duration = $expected > 0 ? max(0, min($expected, $duration)) : max(0, $duration);
             }
+
+            $events = ($eventsBySession[$s->id] ?? collect())->map(fn (AttendanceEvent $e) => [
+                'type' => $e->type,
+                'label' => $e->label(),
+                'time' => $e->occurred_at?->format('H:i'),
+                'within_geofence' => (bool) $e->within_geofence,
+            ])->values();
 
             return [
                 'id' => (string) $s->id,
                 'date' => optional($s->starts_at)->toDateString(),
                 'day' => optional($s->starts_at)->format('l'),
                 'check_in_time' => $checkIn ? $checkIn->format('H:i') : null,
+                'check_out_time' => $checkOut ? $checkOut->format('H:i') : null,
                 'duration_minutes' => $duration,
                 'expected_minutes' => $expected,
                 'status' => $status,
                 'was_on_time' => $status === 'present',
                 'location_verified' => (bool) ($record->within_geofence ?? false),
                 'face_verified' => (bool) ($record->face_verified ?? false),
+                're_entries' => (int) ($record->re_entry_count ?? 0),
+                'still_in_class' => (bool) ($record && !$checkOut && $record->last_entry_at),
+                'events' => $events,
             ];
         })->values();
 

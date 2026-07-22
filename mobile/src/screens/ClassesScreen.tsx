@@ -344,7 +344,10 @@ export function ClassesScreen() {
         }
     };
 
-    const listSource = classes.length === 0 && loadError ? MOCK_CLASSES : classes;
+    // Always show real data. Previously this fell back to MOCK_CLASSES on error,
+    // which surfaced invented classes that don't exist on the server — an honest
+    // empty/error state is far better than fabricated records.
+    const listSource = classes;
     const headerTitle = isSuperAdmin ? 'All Classes' : 'My Classes';
     const headerSubtitle = isSuperAdmin
         ? `${listSource.length} classes in department`

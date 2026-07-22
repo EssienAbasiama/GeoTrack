@@ -17,8 +17,11 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { PieChart, LineChart, BarChart } from '../components/charts';
+import Toast from 'react-native-toast-message';
 import { courseApi } from '../services/apiClient';
+import type { ApiAttendanceEvent } from '../types/api';
 import { formatTime12h } from '../utils/time';
+import { shareCsv } from '../utils/downloadCsv';
 
 const PRIMARY_COLOR = '#6343cc';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -41,6 +44,10 @@ interface SessionRecord {
     status: 'present' | 'late' | 'absent' | 'excused';
     wasOnTime: boolean;
     locationVerified: boolean;
+    /** Times the student left and clocked back in during this class. */
+    reEntries: number;
+    stillInClass: boolean;
+    events: ApiAttendanceEvent[];
 }
 
 // Analytics calculations
@@ -200,8 +207,11 @@ function SessionCard({ session, index }: { session: SessionRecord; index: number
                                 <Ionicons name="log-out" size={16} color="#8F94A4" />
                                 <Text className="text-[10px] text-[#8F94A4] ml-1">Check Out</Text>
                             </View>
-                            <Text className="font-heading text-[16px] text-[#181A20] mt-1">
-                                {session.checkOutTime || '--:--'}
+                            <Text
+                                className="font-heading text-[16px] mt-1"
+                                style={{ color: session.stillInClass ? '#22C55E' : '#181A20' }}
+                            >
+                                {session.checkOutTime || (session.stillInClass ? 'In class' : '--:--')}
                             </Text>
                         </View>
                         <View className="flex-1 rounded-[12px] bg-[#F0EDFC] p-3">
@@ -213,6 +223,32 @@ function SessionCard({ session, index }: { session: SessionRecord; index: number
                                 {formatDuration(session.durationMinutes)}
                             </Text>
                         </View>
+                    </View>
+                )}
+
+                {/* The full in-and-out trail, shown only when they actually left
+                    and came back — otherwise check-in/check-out already says it. */}
+                {session.reEntries > 0 && (
+                    <View className="mt-3 rounded-[12px] bg-[#FFF7ED] p-3">
+                        <View className="flex-row items-center mb-2">
+                            <Ionicons name="swap-horizontal" size={14} color="#F59E0B" />
+                            <Text className="text-[11px] font-medium text-[#B45309] ml-1.5">
+                                Left and returned {session.reEntries}{' '}
+                                {session.reEntries === 1 ? 'time' : 'times'}
+                            </Text>
+                        </View>
+                        {session.events.map((e, i) => (
+                            <View key={`${session.id}-ev-${i}`} className="flex-row items-center py-0.5">
+                                <View
+                                    className="h-1.5 w-1.5 rounded-full"
+                                    style={{ backgroundColor: e.type === 'check_out' ? '#EF4444' : '#22C55E' }}
+                                />
+                                <Text className="text-[11px] text-[#5A5D6B] ml-2 flex-1">{e.label}</Text>
+                                <Text className="text-[11px] font-medium text-[#181A20]">
+                                    {e.time ? formatTime12h(e.time) : '--:--'}
+                                </Text>
+                            </View>
+                        ))}
                     </View>
                 )}
             </View>
@@ -230,6 +266,28 @@ export function StudentDetailScreen() {
     const [activeTab, setActiveTab] = useState<'overview' | 'sessions'>('overview');
     const [sessions, setSessions] = useState<SessionRecord[]>([]);
     const [loading, setLoading] = useState(true);
+    const [downloadingCsv, setDownloadingCsv] = useState(false);
+
+    /** Export this student's full attendance history for the course as CSV. */
+    const handleDownloadStudentReport = async () => {
+        if (downloadingCsv) return;
+        setDownloadingCsv(true);
+        try {
+            const csv = await courseApi.studentAttendanceCsv(courseId, studentId);
+            const safeName = (matricNo || studentName || 'student').replace(/[^A-Za-z0-9_-]/g, '_');
+            await shareCsv(
+                csv,
+                `${classCode}_${safeName}_attendance.csv`,
+                `${studentName} — ${classCode}`,
+            );
+        } catch (err) {
+            const msg =
+                (err as any)?.response?.data?.message ?? 'Could not download the report.';
+            Toast.show({ type: 'error', text1: msg, position: 'bottom' });
+        } finally {
+            setDownloadingCsv(false);
+        }
+    };
 
     useEffect(() => {
         let mounted = true;
@@ -244,12 +302,15 @@ export function StudentDetailScreen() {
                         date: r.date ?? '',
                         day: r.day ?? '',
                         checkInTime: r.check_in_time ? formatTime12h(r.check_in_time) : null,
-                        checkOutTime: null,
+                        checkOutTime: r.check_out_time ? formatTime12h(r.check_out_time) : null,
                         durationMinutes: r.duration_minutes,
                         expectedDurationMinutes: r.expected_minutes,
                         status: r.status,
                         wasOnTime: r.was_on_time,
                         locationVerified: r.location_verified,
+                        reEntries: r.re_entries ?? 0,
+                        stillInClass: r.still_in_class ?? false,
+                        events: r.events ?? [],
                     })),
                 );
             })
@@ -379,7 +440,17 @@ export function StudentDetailScreen() {
                         <Text className="font-heading text-[18px] text-[#181A20]">Student Analytics</Text>
                         <Text className="text-[12px] text-[#8F94A4]">{classCode}</Text>
                     </View>
-                    <View className="w-11" />
+                    <Pressable
+                        onPress={handleDownloadStudentReport}
+                        disabled={downloadingCsv}
+                        className="h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10"
+                    >
+                        {downloadingCsv ? (
+                            <ActivityIndicator size="small" color={PRIMARY_COLOR} />
+                        ) : (
+                            <Ionicons name="download-outline" size={20} color={PRIMARY_COLOR} />
+                        )}
+                    </Pressable>
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
